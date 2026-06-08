@@ -160,4 +160,11 @@ sbatch train.sh
 - If `conda activate atommic2` fails, verify environment creation succeeded and Anaconda module is loaded.
 - If inference fails immediately on cluster, validate all updated paths in yaml files and `train.sh`.
 
-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
+
+‘conda’: dit is de conda environment die je nodig hebt om mijn code te kunnen runnen. Open in deze folder een terminal en run: module load Anaconda3, en daarna: conda env create -f environment.yml, nu kan je als het goed is runnen: conda activate atommic2, en dan heb je de goede environment
+‘data’: hier een kleine uitleg over waar de data staat en hoe het eruit ziet, je kan de documentatie verder bekijken om te zien hoe je de data kunt openen
+‘inference’: dit is het script dat je moet uitvoeren om het getrainde model te runnen op de data.
+Het bevat 174 .yaml files voor 174 timepoints. In deze .yaml files staat het gesavede checkpoint, de plek van de data, etc etc. Hier moet je de paden nog wel even aanpassen als jij ze wilt runnen. Ik zou daarvoor iets van een scriptje schrijven ipv alle 174 files aanpassen
+Het bevat ook een train.sh file, pas hier ook de paden aan. Dit gebruik je om het daadwerkelijk te runnen. Open in deze folder een terminal en run: sbatch train.sh. Dan wordt jouw request in de queue gestopt voor de GPU.
+‘model’: een kleine uitleg over waar de checkpoints staan
+‘parameter maps’: dit zijn de parameter maps die uit het fitting script komen nadat ik mijn model heb gerunt voor de reconstructie, het zijn 4 parameters en je zou deze kunnen inladen met de .m file (dit is een matlab file), je kan er dan ook voor kiezen de colourbar enzo aan te passen
