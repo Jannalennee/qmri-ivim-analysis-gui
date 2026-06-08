@@ -1,0 +1,47 @@
+<article class="panel map-panel" aria-labelledby="maps-title">
+  <h2 id="maps-title">qMRI Visualization</h2>
+
+  @if (inferenceResult(); as result) {
+    <p class="summary">
+      {{ result.modelName }} | confidence {{ result.confidenceScore }} | generated
+      {{ result.generatedAtIso | date: 'short' }}
+    </p>
+  } @else {
+    <p class="summary">Run inference to populate quantitative map summaries.</p>
+  }
+
+  <div class="maps">
+    <div class="map t1">
+      <span>T1 Map</span>
+    </div>
+    <div class="map t2">
+      <span>T2 Map</span>
+    </div>
+    <div class="map pd">
+      <span>PD Map</span>
+    </div>
+    @if (showUncertaintyOverlay()) {
+      <div class="map uncertainty">
+        <span>Uncertainty</span>
+      </div>
+    }
+  </div>
+
+  @if (inferenceResult(); as result) {
+    <h3>Map Summary</h3>
+    <ul class="map-summary">
+      @for (map of result.maps; track map.label) {
+        <li>{{ map.label }}: {{ map.mean }} {{ map.unit }}</li>
+      }
+    </ul>
+
+    @if (result.warnings.length > 0) {
+      <h3>Warnings</h3>
+      <ul class="warnings">
+        @for (warning of result.warnings; track warning) {
+          <li>{{ warning }}</li>
+        }
+      </ul>
+    }
+  }
+</article>

@@ -1,0 +1,37 @@
+<article class="panel" aria-labelledby="execution-title">
+  <h2 id="execution-title">Model Execution</h2>
+
+  <label for="model-select" class="select-label">Selected Model</label>
+  <select id="model-select" [value]="selectedModel()" (change)="onModelChange($event)">
+    @for (option of modelOptions(); track option.id) {
+      <option [value]="option.id">{{ option.label }}</option>
+    }
+  </select>
+
+  <p class="status">
+    Status:
+    <strong [class]="'status-' + inferenceStatus()">{{ inferenceStatus() }}</strong>
+  </p>
+
+  <button type="button" class="run-button" [disabled]="!hasScan()" (click)="runInference()">
+    Run Mock qMRI Inference
+  </button>
+
+  <h3>Task Log</h3>
+  <ul class="task-log">
+    @for (entry of taskLog(); track entry.id) {
+      <li>
+        <p>
+          <strong>{{ entry.task }}</strong>
+          <span class="status-badge" [class]="entry.status">{{ entry.status }}</span>
+        </p>
+        <p>{{ entry.timestampIso | date: 'short' }}</p>
+        @if (entry.notes) {
+          <p>{{ entry.notes }}</p>
+        }
+      </li>
+    } @empty {
+      <li>No workflow events yet.</li>
+    }
+  </ul>
+</article>

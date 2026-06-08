@@ -1,1 +1,149 @@
 /* You can add global styles to this file, and also import other style files */
+
+.qmri-shell {
+	max-width: 1400px;
+	margin: 0 auto;
+	padding: 1.25rem;
+}
+
+
+.shell-header {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 1.2rem;
+	margin-bottom: 1rem;
+}
+
+.shell-header h1 {
+	margin: 0;
+	font-size: clamp(1.4rem, 2.2vw, 2rem);
+	font-weight: 600;
+	color: #3b3b3b;
+}
+
+.amc-logo {
+	width: 64px;
+	height: auto;
+}
+
+
+.shell-grid {
+	display: flex;
+	gap: 1rem;
+}
+
+.column {
+	width: 290px;
+	display: grid;
+	gap: 0.8rem;
+	align-content: start;
+}
+
+.card {
+	background: #f4f4f4;
+	border: 1px solid #c9c9c9;
+	border-radius: 2px;
+	padding: 0.75rem;
+}
+
+.card h2 {
+	margin: 0 0 0.5rem;
+	font-size: 1rem;
+	color: #555;
+}
+
+.card label {
+	display: block;
+	font-size: 0.82rem;
+	color: #6a6a6a;
+	margin: 0.35rem 0;
+}
+
+.card select,
+.card button,
+.card input[type='file'] {
+	width: 100%;
+	box-sizing: border-box;
+	border: 1px solid #bfc4c8;
+	background: #eceff2;
+	color: #3e4348;
+	padding: 0.4rem 0.45rem;
+	font-size: 0.82rem;
+	border-radius: 2px;
+}
+
+.card button {
+	cursor: pointer;
+	font-weight: 600;
+}
+
+.card button:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.card input[type='file'] {
+	display: none;
+}
+
+.button-like {
+	display: block;
+	border: 1px solid #bfc4c8;
+	background: #eceff2;
+	color: #3e4348;
+	padding: 0.4rem 0.45rem;
+	font-size: 0.82rem;
+	border-radius: 2px;
+	cursor: pointer;
+	text-align: center;
+}
+
+.small {
+	margin: 0.45rem 0 0;
+	font-size: 0.77rem;
+	color: #666;
+	line-height: 1.4;
+}
+
+.viewer {
+	flex: 1;
+	min-width: 0;
+	display: grid;
+	grid-template-rows: auto 1fr;
+	gap: 0.5rem;
+}
+
+.viewer-stage {
+	min-height: 560px;
+	border: 1px solid #c9c9c9;
+	background: #f9f9f9;
+}
+
+@media (max-width: 1220px) {
+	.shell-grid {
+		flex-direction: column;
+	}
+
+	.column {
+		width: 100%;
+	}
+
+	.viewer-stage {
+		min-height: 420px;
+	}
+}
+
+@media (max-width: 760px) {
+	.qmri-shell {
+		padding: 0.8rem;
+	}
+
+	.shell-header {
+		justify-content: flex-start;
+	}
+
+	.shell-header h1 {
+		font-size: 1.15rem;
+	}
+}

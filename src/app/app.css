@@ -1,0 +1,16 @@
+:host {
+	--bg-top: #f2f2f2;
+	--bg-bottom: #ececec;
+	--panel-bg: #f4f4f4;
+	--text: #303030;
+	--muted: #666666;
+	--accent: #6c6c6c;
+	--accent-strong: #4d4d4d;
+	--border: #c9c9c9;
+
+	display: block;
+	min-height: 100dvh;
+	color: var(--text);
+	background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+	font-family: "Segoe UI", Tahoma, sans-serif;
+}

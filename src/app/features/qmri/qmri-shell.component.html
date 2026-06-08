@@ -1,0 +1,97 @@
+<main class="qmri-shell">
+  <header class="shell-header" aria-labelledby="page-title">
+    <img
+      class="amc-logo"
+      ngSrc="assets/images/amc_logo.png"
+      width="64"
+      height="64"
+      alt="Amsterdam UMC logo"
+      priority
+    />
+    <h1 id="page-title">qMRI Deep Learning Analysis Tool</h1>
+  </header>
+
+  <section class="shell-grid" aria-label="qMRI analysis interface">
+    <aside class="column">
+      <article class="card">
+        <h2>1. Patient / Dataset</h2>
+
+        <label for="dataset-source">Data source</label>
+        <select id="dataset-source" disabled>
+          <option selected>Local file</option>
+        </select>
+
+        <label for="scan-upload" class="button-like">Load Data</label>
+        <input
+          id="scan-upload"
+          type="file"
+          accept=".dcm,.dicom,.nii,.nii.gz"
+          (change)="onFileInput($event)"
+        />
+
+        <p class="small">{{ ingestMessage() }}</p>
+      </article>
+
+      <article class="card">
+        <h2>2. Model Selection</h2>
+
+        <label for="model-select">Model</label>
+        <select id="model-select" [value]="selectedModel()" (change)="onModelChange($event)">
+          @for (option of modelOptions(); track option.id) {
+            <option [value]="option.id">{{ option.label }}</option>
+          }
+        </select>
+
+        <button type="button" (click)="applyRecommendedSettings()">Load Model</button>
+      </article>
+
+      <article class="card">
+        <h2>3. Input Validation</h2>
+        <p class="small">{{ workflowStep() }}</p>
+      </article>
+
+      <article class="card">
+        <h2>4. Run Model</h2>
+        <button type="button" [disabled]="selectedScan() === null" (click)="runInference()">
+          Run analysis
+        </button>
+        <p class="small">Status: <strong>{{ inferenceStatus() }}</strong></p>
+      </article>
+    </aside>
+
+    <section class="viewer card" aria-label="Viewer panel">
+      <h2>Viewer</h2>
+      <div class="viewer-stage" role="img" aria-label="Image viewer placeholder"></div>
+    </section>
+
+    <aside class="column">
+      <article class="card">
+        <h2>Model Information</h2>
+        <p class="small">Selected model: {{ selectedModel() }}</p>
+
+        @if (inferenceResult(); as result) {
+          <p class="small">Output: {{ result.maps.length }} maps</p>
+        } @else {
+          <p class="small">Output of AI model appears here after run.</p>
+        }
+      </article>
+
+      <article class="card">
+        <h2>Validation</h2>
+        @if (taskLog().length > 0) {
+          <p class="small">Last event: {{ taskLog()[0].task }}</p>
+          <p class="small">{{ taskLog()[0].notes ?? 'No details.' }}</p>
+        } @else {
+          <p class="small">No validation events yet.</p>
+        }
+      </article>
+
+      <article class="card">
+        <h2>Export</h2>
+        <button type="button" [disabled]="!inferenceResult()">Save Maps</button>
+        <button type="button" [disabled]="!inferenceResult()">Save Report</button>
+        <button type="button" [disabled]="!inferenceResult()">Save Screenshot</button>
+      </article>
+    </aside>
+  </section>
+</main>

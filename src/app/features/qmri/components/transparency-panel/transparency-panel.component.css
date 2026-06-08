@@ -1,0 +1,27 @@
+.panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgb(9 47 64 / 10%);
+  padding: 1rem;
+}
+
+h2 {
+  margin-top: 0;
+  font-size: 1.1rem;
+}
+
+ul {
+  padding-left: 1rem;
+}
+
+li {
+  margin-bottom: 0.4rem;
+}
+
+.note {
+  border-left: 4px solid var(--accent);
+  padding-left: 0.6rem;
+  margin-bottom: 0;
+  color: var(--muted);
+}

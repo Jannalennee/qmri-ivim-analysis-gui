@@ -1,0 +1,33 @@
+<section class="panel role-panel" aria-labelledby="role-title">
+  <h2 id="role-title">User Profile</h2>
+  <p>Select an expertise level to progressively reveal interface complexity.</p>
+
+  <div class="role-buttons" role="group" aria-label="Select expertise profile">
+    <button
+      type="button"
+      class="role-button"
+      [class.active]="selectedRole() === 'clinician'"
+      (click)="selectRole('clinician')"
+    >
+      Clinician
+    </button>
+    <button
+      type="button"
+      class="role-button"
+      [class.active]="selectedRole() === 'researcher'"
+      (click)="selectRole('researcher')"
+    >
+      Researcher
+    </button>
+    <button
+      type="button"
+      class="role-button"
+      [class.active]="selectedRole() === 'developer'"
+      (click)="selectRole('developer')"
+    >
+      Developer
+    </button>
+  </div>
+
+  <p class="role-summary">{{ roleDescription() }}</p>
+</section>
