@@ -159,3 +159,5 @@ sbatch train.sh
 - If `ng` or Angular commands fail locally, ensure `npm install` completed successfully.
 - If `conda activate atommic2` fails, verify environment creation succeeded and Anaconda module is loaded.
 - If inference fails immediately on cluster, validate all updated paths in yaml files and `train.sh`.
+
+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
