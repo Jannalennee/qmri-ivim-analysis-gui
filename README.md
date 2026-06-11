@@ -168,3 +168,5 @@ Het bevat 174 .yaml files voor 174 timepoints. In deze .yaml files staat het ges
 Het bevat ook een train.sh file, pas hier ook de paden aan. Dit gebruik je om het daadwerkelijk te runnen. Open in deze folder een terminal en run: sbatch train.sh. Dan wordt jouw request in de queue gestopt voor de GPU.
 ‘model’: een kleine uitleg over waar de checkpoints staan
 ‘parameter maps’: dit zijn de parameter maps die uit het fitting script komen nadat ik mijn model heb gerunt voor de reconstructie, het zijn 4 parameters en je zou deze kunnen inladen met de .m file (dit is een matlab file), je kan er dan ook voor kiezen de colourbar enzo aan te passen
+
+https://github.com/OSIPI/TF2.4_IVIM-MRI_CodeCollection/blob/main/src/original/fitting/OGC_AmsterdamUMC/LSQ_fitting.py
