@@ -1,142 +1,298 @@
-# qMRI Deep Learning Analysis Tool (AMC Prototype)
+# qMRI GUI Proof of Concept
 
-Angular prototype for a simplified qMRI analysis workflow UI.
+This repository contains a proof-of-concept qMRI GUI for Amsterdam UMC. The current implementation focuses on one working analysis path: loading private diffusion MRI data, running IVIM least-squares fitting through a local Python backend, and inspecting the resulting parameter maps in the browser.
 
-This repository now contains both:
+The project is intentionally small and practical. It shows how a qMRI workflow can be translated into a usable GUI, and gives the next project team a clear starting point for further development.
 
-- an Angular front-end workflow prototype
-- a local FastAPI backend that runs IVIM LSQ fitting on NIfTI data
+## Current Scope
 
-## Thesis Alignment
+The GUI is a qMRI proof of concept, not a finished clinical or research product. At this stage it supports IVIM-LSQ fitting only. Earlier generic AI-model options, NCDE/DCE concepts, uncertainty overlays, smoothing controls, confidence thresholds, and model-selection UI have been removed from the working flow.
 
-- RQ1: design principles and best practices
-- RQ2: workflow translation into a GUI prototype
-- RQ3: evaluation through usability tasks and qualitative feedback (outside this prototype UI)
+What currently works:
 
-Supporting documents:
+- Load a private 4D diffusion NIfTI file (`.nii` or `.nii.gz`).
+- Load a matching b-values file (`.bval`).
+- Validate that the number of b-values matches the number of diffusion volumes.
+- Run IVIM least-squares fitting on the local FastAPI backend.
+- View IVIM parameter maps in the browser.
+- Switch between `D`, `f`, `D*`, adjusted R2, and valid-mask maps.
+- Scroll through slices.
+- Adjust simple window and level display controls.
+- Click a voxel to inspect the measured signal and fitted IVIM curve.
+- Draw a rectangular ROI on a map slice and view basic summary statistics.
 
-- [docs/project-blueprint.md](docs/project-blueprint.md)
-- [docs/design-principles.md](docs/design-principles.md)
-- [docs/evaluation-plan.md](docs/evaluation-plan.md)
+Still placeholder or future work:
 
-## What This App Contains
+- Export parameter maps.
+- Export voxel-fit CSV files.
+- Export reports.
+- More qMRI models or workflows beyond IVIM-LSQ.
+- Production-level error handling, authentication, deployment, and data governance.
 
-- Simplified 3-column IVIM LSQ workflow:
-	- Left: private dataset loading, validation, run action
-	- Center: IVIM parameter map viewer with voxel and ROI tools
-	- Right: voxel fit, ROI summary, validation summary, export placeholders
-- Role and workflow state management using Angular signals
-- IVIM LSQ inference flow through the local backend API
-- No imaging datasets are stored under `public/`; load private NIfTI and `.bval` files through the UI.
+## How The GUI Is Organized
+
+The app opens directly on the qMRI workflow. The screen is divided into three working areas.
+
+Left column:
+
+- Upload the diffusion NIfTI file.
+- Upload the `.bval` file.
+- Optionally load both files together.
+- Check validation feedback.
+- Start the IVIM-LSQ analysis.
+- Read the run log.
+
+Center panel:
+
+- View the parameter map canvas.
+- Choose which parameter map to display.
+- Move through slices with the Z-slice slider.
+- Change window and level for display.
+- Click a voxel for fit inspection.
+- Drag a rectangle for ROI statistics.
+
+Right column:
+
+- View ROI summary statistics.
+- View selected voxel parameters and the fit graph.
+- View global fit-quality metrics.
+- See export placeholders for future development.
+
+## Input Data
+
+Use private/local data only. Do not place patient, research, or example imaging datasets in `public/`.
+
+The GUI expects:
+
+- A 4D diffusion MRI NIfTI file: `.nii` or `.nii.gz`.
+- A matching b-values file: `.bval`.
+
+The NIfTI file must have shape like:
+
+```text
+x, y, z, diffusion-volume
+```
+
+The `.bval` file must contain one b-value for every diffusion volume in the NIfTI file. For example, if the NIfTI contains 16 diffusion volumes, the `.bval` file must contain 16 b-values.
+
+The filenames do not need to match when both files are uploaded through the GUI. The backend also supports a private fallback b-values path through `QMRI_BVAL_PATH`, but uploading the `.bval` file in the GUI is the clearest workflow.
 
 ## Project Structure
 
 ```text
-src/app/
-	app.ts
-	app.html
-	app.css
-	features/
-		qmri/
-			qmri-shell.component.ts
-			qmri-shell.component.html
-			qmri.types.ts
-			domain/
-			services/
-			state/
-			components/
+backend/
+  requirements.txt
+  qmri_api/
+    main.py              FastAPI backend and IVIM result contract
+    ivim_lsq.py          IVIM least-squares fitting code
+
+src/app/features/qmri/
+  qmri-shell.component.* Main qMRI GUI layout
+  components/maps-viewer Parameter map canvas, voxel click, ROI selection
+  domain/               TypeScript result models
+  services/             Data ingest and backend API calls
+  state/                qMRI session state
+
 docs/
+  project-blueprint.md
+  design-principles.md
+  evaluation-plan.md
+
 public/
+  assets/images/amc_logo.png
+  favicon.ico
 ```
 
-## Local Development (Angular App)
+## First-Time Setup
 
-### Prerequisites
+These steps assume you start from a fresh clone of the repository.
 
-- Node.js (LTS recommended)
-- npm (project uses npm)
+### 1. Open the project
 
-### Install dependencies
+```bash
+cd amc_ui
+```
+
+### 2. Install the frontend dependencies
 
 ```bash
 npm install
 ```
 
-### Start development server
+This installs Angular and the JavaScript packages defined in `package.json`.
+
+### 3. Create a Python virtual environment for the backend
+
+From the project root:
+
+```bash
+python3 -m venv backend/.venv
+```
+
+Activate it:
+
+```bash
+source backend/.venv/bin/activate
+```
+
+After activation, your terminal prompt usually shows `(.venv)`.
+
+### 4. Install the backend Python dependencies
+
+With the virtual environment active:
+
+```bash
+pip install -r backend/requirements.txt
+```
+
+This installs FastAPI, Uvicorn, NumPy, SciPy, nibabel, and the other Python packages needed for the IVIM-LSQ backend.
+
+## Start The Project
+
+You need two terminals: one for the backend and one for the frontend.
+
+### Terminal 1: start the backend
+
+From the project root:
+
+```bash
+source backend/.venv/bin/activate
+uvicorn qmri_api.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
+```
+
+The backend should now be available at:
+
+```text
+http://127.0.0.1:8000
+```
+
+You can test it in a browser or terminal with:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+The exact response also includes a timestamp.
+
+### Terminal 2: start the frontend
+
+From the project root:
 
 ```bash
 npm start
 ```
 
-Open the URL shown in the terminal (typically `http://localhost:4200`).
+Open the URL shown in the terminal. It is normally:
 
-### Build
+```text
+http://localhost:4200
+```
+
+The frontend expects the backend to run on port `8000`.
+
+## Run An Analysis In The GUI
+
+1. Start the backend.
+2. Start the frontend.
+3. Open `http://localhost:4200`.
+4. In the Dataset panel, choose a diffusion NIfTI file (`.nii` or `.nii.gz`).
+5. Choose the matching `.bval` file.
+6. Check the Validation panel. It should say that the number of volumes and b-values match.
+7. Click `Run IVIM LSQ fitting`.
+8. Wait for the run log to show completion.
+9. Use the center map viewer to inspect the parameter maps.
+10. Click a voxel to inspect the fit graph in the right column.
+11. Drag a rectangle on the map to calculate ROI summary statistics.
+
+## Optional Backend Settings
+
+The backend can be configured with environment variables before starting Uvicorn.
+
+Allow a different frontend origin:
+
+```bash
+export QMRI_ALLOWED_ORIGINS=http://localhost:4200
+```
+
+Use a private default `.bval` file when no `.bval` is uploaded:
+
+```bash
+export QMRI_BVAL_PATH=/absolute/private/path/to/bvalues.bval
+```
+
+Control the number of parallel LSQ jobs:
+
+```bash
+export QMRI_LSQ_JOBS=4
+```
+
+## Development Commands
+
+Build the frontend:
 
 ```bash
 npm run build
 ```
 
-### Run tests
+Run frontend tests:
 
 ```bash
 npm test
 ```
 
-## Local Backend (IVIM LSQ)
-
-The backend endpoint keeps the existing front-end contract at `POST /api/inference/run`.
-
-It performs this flow:
-
-1. Receive uploaded NIfTI from the UI
-2. Receive the matching uploaded `.bval` file, or use `QMRI_BVAL_PATH` for a private local b-value file
-3. Run LSQ fitting (`D`, `f`, `D*`) on filtered voxels
-4. Return parameter maps, QC, voxel-fit support, and ROI-readable map data to the UI
-
-### 1. Install backend dependencies
+Compile-check the backend Python files:
 
 ```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python3 -m compileall backend/qmri_api
 ```
 
-### 2. Start the backend API
+## Privacy And Data Handling
 
-```bash
-cd backend
-source .venv/bin/activate
-uvicorn qmri_api.main:app --host 0.0.0.0 --port 8000 --reload
-```
+Do not store imaging datasets in `public/`. Everything in `public/` is part of the Angular web assets and can be copied into the build output.
 
-### 3. Start Angular UI
-
-```bash
-npm start
-```
-
-### 4. Dataset sources
-
-Do not keep patient or research imaging datasets under `public/`. Files in `public/` are copied into the Angular build output and can be served by the frontend.
-
-Use the UI file pickers to load a private `.nii` or `.nii.gz` file plus its matching `.bval` file from a local folder outside the web app. The filenames do not need to match; the number of b-values must match the number of diffusion volumes.
-
-### 5. Optional backend environment variables
-
-```bash
-export QMRI_ALLOWED_ORIGINS=http://localhost:4200
-export QMRI_BVAL_PATH=/absolute/path/to/bvalues.bval
-export QMRI_LSQ_JOBS=4
-```
-
-## Notes and Limitations
-
-- The current backend computes voxel-wise IVIM LSQ maps (`D`, `f`, `D*`) and quality metric (`Adjusted R2`).
-- Export buttons in the UI are still prototype placeholders.
+For this POC, imaging data should stay in a private local folder and be selected through the browser file picker. The backend receives uploaded files temporarily during analysis and does not serve public example datasets.
 
 ## Troubleshooting
 
-- If `ng` or Angular commands fail locally, ensure `npm install` completed successfully.
-- If backend fails with NIfTI errors, verify your input is a 4D `.nii` or `.nii.gz` with matching number of b-values.
-- If no `.bval` is uploaded, set `QMRI_BVAL_PATH=/absolute/private/path/to/bvalues.bval` before starting the backend.
+Backend is not reachable:
+
+- Make sure the backend terminal is still running.
+- Check that it is running on port `8000`.
+- Test `http://127.0.0.1:8000/health`.
+
+Frontend does not start:
+
+- Run `npm install` again.
+- Check that you are in the project root.
+- Run `npm start`.
+
+Python package install fails:
+
+- Make sure the virtual environment is activated.
+- Upgrade pip if needed with `python -m pip install --upgrade pip`.
+- Then rerun `pip install -r backend/requirements.txt`.
+
+Validation fails in the GUI:
+
+- Check that the NIfTI is 4D.
+- Check that the `.bval` file has one value per diffusion volume.
+- Check that the `.bval` file is the correct file for this scan.
+
+Analysis fails after clicking Run:
+
+- Check the Run Log in the GUI.
+- Check the backend terminal for the Python error.
+- Verify the backend dependencies were installed in `backend/.venv`.
+- Verify the backend was started with `uvicorn qmri_api.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload`.
+
+## Related Documents
+
+- [docs/project-blueprint.md](docs/project-blueprint.md)
+- [docs/design-principles.md](docs/design-principles.md)
+- [docs/evaluation-plan.md](docs/evaluation-plan.md)

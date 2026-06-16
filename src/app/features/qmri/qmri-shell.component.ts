@@ -29,7 +29,7 @@ export class QmriShellComponent {
   protected currentSlice = 0;
 
   constructor() {
-    this.pageTitle.setTitle('IVIM LSQ Proof of Concept');
+    this.pageTitle.setTitle('qMRI GUI');
   }
 
   protected async onNiftiInput(event: Event): Promise<void> {

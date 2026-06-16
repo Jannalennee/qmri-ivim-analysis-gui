@@ -1,7 +1,7 @@
 <div class="maps-viewer">
   @if (inferenceResult(); as result) {
     <div class="map-selector">
-      <h3>Select Parameter Map</h3>
+      <h3>Parameter map</h3>
       <div class="map-buttons">
         @for (entry of mapEntries(); track entry.key; let i = $index) {
           <button
