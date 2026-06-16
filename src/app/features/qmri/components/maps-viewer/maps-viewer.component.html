@@ -1,0 +1,134 @@
+<div class="maps-viewer">
+  @if (inferenceResult(); as result) {
+    <div class="map-selector">
+      <h3>Select Parameter Map</h3>
+      <div class="map-buttons">
+        @for (entry of mapEntries(); track entry.key; let i = $index) {
+          <button
+            type="button"
+            class="map-button"
+            [class.selected]="isSelected(i)"
+            (click)="selectMap(i)"
+            [style.border-color]="getMapColor(i)"
+          >
+            {{ entry.map.displayName }}
+          </button>
+        }
+      </div>
+    </div>
+
+    @if (decodeError(); as error) {
+      <div class="decode-error" role="alert">
+        {{ error }}
+      </div>
+    }
+
+    @if (selectedMap(); as map) {
+      <div class="map-display">
+        <div class="map-info">
+          <strong>{{ map.displayName }}</strong>
+          <span class="map-stats">
+            Slice {{ currentSliceSignal() }} / {{ maxSlice() }} | Mean: {{ map.meanValue.toFixed(4) }} {{ map.unit }}
+          </span>
+        </div>
+
+        <div class="viewer-canvas">
+          @if (canvasImageData(); as imageData) {
+            <div class="canvas-frame">
+              <canvas
+                #mapCanvas
+                id="map-canvas"
+                class="image-canvas"
+                [width]="imageData.width"
+                [height]="imageData.height"
+                (click)="selectVoxelFromCanvas($event)"
+                (pointerdown)="startRoi($event)"
+                (pointermove)="updateRoi($event)"
+                (pointerup)="finishRoi($event)"
+                (pointercancel)="cancelRoi($event)"
+              ></canvas>
+              @if (roiOverlayStyle(); as style) {
+                <div class="roi-overlay" [ngStyle]="style"></div>
+              }
+            </div>
+          } @else if (decodeError()) {
+            <div class="canvas-placeholder error">
+              <p>Parameter map voxel data could not be decoded.</p>
+            </div>
+          } @else {
+            <div class="canvas-placeholder">
+              <p>Loading voxel data...</p>
+            </div>
+          }
+        </div>
+
+        <div class="controls-section">
+          <div class="slice-control">
+            <label for="slice-slider">Slice (Z)</label>
+            <input
+              id="slice-slider"
+              type="range"
+              min="0"
+              [max]="maxSlice()"
+              [value]="currentSliceSignal()"
+              (input)="setSliceFromEvent($event)"
+              class="slider"
+            />
+            <span class="slice-counter">{{ currentSliceSignal() }} / {{ maxSlice() }}</span>
+          </div>
+
+          <div class="windowing-controls">
+            <div class="window-control">
+              <label for="window-slider">Window</label>
+              <input
+                id="window-slider"
+                type="range"
+                min="1"
+                max="200"
+                [value]="windowLevel().window"
+                (input)="setWindowFromEvent($event)"
+                class="slider"
+              />
+              <span class="value-display">{{ windowLevel().window }}</span>
+            </div>
+
+            <div class="level-control">
+              <label for="level-slider">Level</label>
+              <input
+                id="level-slider"
+                type="range"
+                min="0"
+                max="100"
+                [value]="windowLevel().level"
+                (input)="setLevelFromEvent($event)"
+                class="slider"
+              />
+              <span class="value-display">{{ windowLevel().level }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="map-details">
+          <p><strong>Parameter:</strong> {{ map.displayName }}</p>
+          <p><strong>Unit:</strong> {{ map.unit }}</p>
+          <p><strong>Min:</strong> {{ map.minValue.toFixed(6) }}</p>
+          <p><strong>Max:</strong> {{ map.maxValue.toFixed(6) }}</p>
+          <p><strong>Mean:</strong> {{ map.meanValue.toFixed(6) }}</p>
+          @if (selectedVoxel(); as voxel) {
+            <p><strong>Voxel:</strong> {{ voxel.x }}, {{ voxel.y }}, {{ voxel.z }}</p>
+          } @else {
+            <p><strong>Voxel:</strong> click the map to inspect a fit</p>
+          }
+        </div>
+      </div>
+    } @else {
+      <div class="empty-state">
+        <p>Select a map to view</p>
+      </div>
+    }
+  } @else {
+    <div class="empty-state">
+      <p>No inference result yet. Upload data and run analysis.</p>
+    </div>
+  }
+</div>

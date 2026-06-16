@@ -1,14 +1,14 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { NgOptimizedImage } from '@angular/common';
 import { Title } from '@angular/platform-browser';
 
-import { QmriModelId } from './domain/qmri-inference.model';
-import { UserRole } from './qmri.types';
+import { RoiSummary, SelectedVoxelFit } from './domain/qmri-inference.model';
 import { QmriSessionStore } from './state/qmri-session.store';
+import { MapsViewerComponent } from './components/maps-viewer/maps-viewer.component';
 
 @Component({
   selector: 'app-qmri-shell',
-  imports: [NgOptimizedImage],
+  imports: [NgOptimizedImage, MapsViewerComponent],
   templateUrl: './qmri-shell.component.html',
   styleUrl: './qmri-shell.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -17,93 +17,91 @@ export class QmriShellComponent {
   private readonly sessionStore = inject(QmriSessionStore);
   private readonly pageTitle = inject(Title);
 
-  constructor() {
-    this.pageTitle.setTitle('AMC qMRI');
-  }
-
-  protected readonly selectedRole = this.sessionStore.selectedRole;
-  protected readonly showAdvancedControls = this.sessionStore.showAdvancedControls;
-  protected readonly confidenceThreshold = this.sessionStore.confidenceThreshold;
-  protected readonly overlayOpacity = this.sessionStore.overlayOpacity;
-  protected readonly smoothingLevel = this.sessionStore.smoothingLevel;
-  protected readonly showUncertaintyOverlay = this.sessionStore.showUncertaintyOverlay;
-  protected readonly ivimBMax = this.sessionStore.ivimBMax;
-  protected readonly ivimRegularization = this.sessionStore.ivimRegularization;
-  protected readonly ncdeTimeSteps = this.sessionStore.ncdeTimeSteps;
-  protected readonly ncdeHiddenSize = this.sessionStore.ncdeHiddenSize;
   protected readonly selectedScan = this.sessionStore.selectedScan;
+  protected readonly selectedBvalFileName = this.sessionStore.selectedBvalFileName;
   protected readonly ingestMessage = this.sessionStore.ingestMessage;
+  protected readonly validation = this.sessionStore.validation;
   protected readonly inferenceStatus = this.sessionStore.inferenceStatus;
   protected readonly inferenceResult = this.sessionStore.inferenceResult;
-  protected readonly selectedModel = this.sessionStore.selectedModel;
-  protected readonly modelOptions = this.sessionStore.modelOptions;
   protected readonly taskLog = this.sessionStore.taskLog;
-  protected readonly roleDescription = this.sessionStore.roleDescription;
-  protected readonly workflowStep = this.sessionStore.workflowStep;
-  protected readonly visibleTasks = this.sessionStore.visibleTasks;
+  protected readonly selectedVoxelFit = signal<SelectedVoxelFit | null>(null);
+  protected readonly selectedRoiSummary = signal<RoiSummary | null>(null);
+  protected currentSlice = 0;
 
-  protected updateRole(role: UserRole): void {
-    this.sessionStore.updateRole(role);
+  constructor() {
+    this.pageTitle.setTitle('IVIM LSQ Proof of Concept');
   }
 
-  protected setThreshold(value: number): void {
-    this.sessionStore.setThreshold(value);
-  }
-
-  protected setOpacity(value: number): void {
-    this.sessionStore.setOpacity(value);
-  }
-
-  protected setSmoothing(value: number): void {
-    this.sessionStore.setSmoothing(value);
-  }
-
-  protected toggleUncertainty(): void {
-    this.sessionStore.toggleUncertainty();
-  }
-
-  protected handleFileSelected(file: File | null): void {
-    this.sessionStore.ingestFile(file);
-  }
-
-  protected runInference(): void {
-    this.sessionStore.runInference();
-  }
-
-  protected setModel(model: QmriModelId): void {
-    this.sessionStore.setModel(model);
-  }
-
-  protected setIvimBMax(value: number): void {
-    this.sessionStore.setIvimBMax(value);
-  }
-
-  protected setIvimRegularization(value: number): void {
-    this.sessionStore.setIvimRegularization(value);
-  }
-
-  protected setNcdeTimeSteps(value: number): void {
-    this.sessionStore.setNcdeTimeSteps(value);
-  }
-
-  protected setNcdeHiddenSize(value: number): void {
-    this.sessionStore.setNcdeHiddenSize(value);
-  }
-
-  protected applyRecommendedSettings(): void {
-    this.sessionStore.applyRecommendedSettings();
-  }
-
-  protected onFileInput(event: Event): void {
+  protected async onNiftiInput(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
-    const file = input.files?.[0] ?? null;
-    this.handleFileSelected(file);
+    await this.sessionStore.ingestScanFile(input.files?.[0] ?? null);
+    this.selectedVoxelFit.set(null);
+    this.selectedRoiSummary.set(null);
   }
 
-  protected onModelChange(event: Event): void {
-    const value = (event.target as HTMLSelectElement).value;
-    if (value === 'ivimnet' || value === 'ncde-qmri') {
-      this.setModel(value);
-    }
+  protected async onBvalInput(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    await this.sessionStore.ingestBvalFile(input.files?.[0] ?? null);
+    this.selectedVoxelFit.set(null);
+    this.selectedRoiSummary.set(null);
+  }
+
+  protected async onDatasetInput(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    await this.sessionStore.ingestDatasetFiles(Array.from(input.files ?? []));
+    this.selectedVoxelFit.set(null);
+    this.selectedRoiSummary.set(null);
+  }
+
+  protected async runInference(): Promise<void> {
+    this.selectedVoxelFit.set(null);
+    this.selectedRoiSummary.set(null);
+    await this.sessionStore.runInference();
+  }
+
+  protected updateVoxelSelection(selection: SelectedVoxelFit | null): void {
+    this.selectedVoxelFit.set(selection);
+  }
+
+  protected updateRoiSelection(summary: RoiSummary | null): void {
+    this.selectedRoiSummary.set(summary);
+  }
+
+  protected canRun(): boolean {
+    return this.validation().status === 'valid' && this.inferenceStatus() !== 'running';
+  }
+
+  protected graphPointX(index: number, fit: SelectedVoxelFit): number {
+    const maxBvalue = Math.max(...fit.bvalues, 1);
+    return 42 + (fit.bvalues[index] / maxBvalue) * 246;
+  }
+
+  protected graphPointY(value: number, fit: SelectedVoxelFit): number {
+    const maxSignal = this.graphMaxSignal(fit);
+    const clamped = Math.max(0, Math.min(maxSignal, value));
+    return 128 - (clamped / maxSignal) * 100;
+  }
+
+  protected fittedPolyline(fit: SelectedVoxelFit): string {
+    return this.sortedFitIndices(fit)
+      .map((index) => `${this.graphPointX(index, fit).toFixed(1)},${this.graphPointY(fit.fitted[index], fit).toFixed(1)}`)
+      .join(' ');
+  }
+
+  protected graphMaxSignal(fit: SelectedVoxelFit): number {
+    const maxSignal = Math.max(...fit.measured, ...fit.fitted, 1);
+    return Math.ceil(maxSignal * 10) / 10;
+  }
+
+  protected minBvalue(fit: SelectedVoxelFit): number {
+    return Math.min(...fit.bvalues);
+  }
+
+  protected maxBvalue(fit: SelectedVoxelFit): number {
+    return Math.max(...fit.bvalues);
+  }
+
+  private sortedFitIndices(fit: SelectedVoxelFit): readonly number[] {
+    return fit.bvalues.map((_, index) => index).sort((left, right) => fit.bvalues[left] - fit.bvalues[right]);
   }
 }

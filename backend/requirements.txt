@@ -1,0 +1,7 @@
+fastapi==0.83.0
+uvicorn==0.16.0
+python-multipart==0.0.5
+numpy==1.19.5
+scipy==1.5.4
+joblib==1.1.1
+nibabel==3.2.2

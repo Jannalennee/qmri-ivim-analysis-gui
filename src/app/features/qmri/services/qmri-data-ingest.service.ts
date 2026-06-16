@@ -16,7 +16,7 @@ export class QmriDataIngestService {
     if (!file) {
       return {
         ok: false,
-        message: 'No file selected. Please choose a DICOM or NIfTI file.'
+        message: 'No file selected. Choose a .nii or .nii.gz file.'
       };
     }
 
@@ -24,7 +24,7 @@ export class QmriDataIngestService {
     if (!format) {
       return {
         ok: false,
-        message: 'Unsupported format. Use .dcm, .dicom, .nii, or .nii.gz.'
+        message: 'Unsupported format. Use .nii or .nii.gz.'
       };
     }
 
@@ -52,10 +52,6 @@ export class QmriDataIngestService {
     const normalized = fileName.toLowerCase();
     if (normalized.endsWith('.nii') || normalized.endsWith('.nii.gz')) {
       return 'nifti';
-    }
-
-    if (normalized.endsWith('.dcm') || normalized.endsWith('.dicom')) {
-      return 'dicom';
     }
 
     return null;

@@ -2,7 +2,10 @@
 
 Angular prototype for a simplified qMRI analysis workflow UI.
 
-This repository contains the front-end concept and mock workflow logic. The actual research model training and HPC inference scripts live in the shared `dce_rim/Janna` environment.
+This repository now contains both:
+
+- an Angular front-end workflow prototype
+- a local FastAPI backend that runs IVIM LSQ fitting on NIfTI data
 
 ## Thesis Alignment
 
@@ -18,13 +21,13 @@ Supporting documents:
 
 ## What This App Contains
 
-- Simplified 3-column UI concept:
-	- Left: dataset, model selection, validation, run action
-	- Center: viewer placeholder
-	- Right: model information, validation summary, export actions
+- Simplified 3-column IVIM LSQ workflow:
+	- Left: private dataset loading, validation, run action
+	- Center: IVIM parameter map viewer with voxel and ROI tools
+	- Right: voxel fit, ROI summary, validation summary, export placeholders
 - Role and workflow state management using Angular signals
-- Mock inference flow for UI/prototyping purposes
-- Sample test data under [public/test-data/](public/test-data/)
+- IVIM LSQ inference flow through the local backend API
+- No imaging datasets are stored under `public/`; load private NIfTI and `.bval` files through the UI.
 
 ## Project Structure
 
@@ -79,94 +82,61 @@ npm run build
 npm test
 ```
 
-## Data and Model Workflow (HPC / dce_rim)
+## Local Backend (IVIM LSQ)
 
-Use this flow for the real model/data pipeline provided by the supervisor.
+The backend endpoint keeps the existing front-end contract at `POST /api/inference/run`.
 
-### 1. Mount the shared disk
+It performs this flow:
+
+1. Receive uploaded NIfTI from the UI
+2. Receive the matching uploaded `.bval` file, or use `QMRI_BVAL_PATH` for a private local b-value file
+3. Run LSQ fitting (`D`, `f`, `D*`) on filtered voxels
+4. Return parameter maps, QC, voxel-fit support, and ROI-readable map data to the UI
+
+### 1. Install backend dependencies
 
 ```bash
-mount_my_rdisk
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-### 2. Go to your folder
+### 2. Start the backend API
 
 ```bash
-cd dce_rim/Janna
+cd backend
+source .venv/bin/activate
+uvicorn qmri_api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Folder meaning:
-
-- `conda`: conda environment definition (`environment.yml`)
-- `data`: data documentation and structure
-- `inference`: run scripts and 174 yaml configs (one per timepoint)
-- `model`: checkpoint location documentation
-- `parameter maps`: generated parameter-map outputs and MATLAB helper
-
-### 3. Create and activate conda environment
+### 3. Start Angular UI
 
 ```bash
-cd conda
-module load Anaconda3
-conda env create -f environment.yml
-conda activate atommic2
+npm start
 ```
 
-### 4. Prepare inference configs
+### 4. Dataset sources
 
-In `dce_rim/Janna/inference`, update paths in:
+Do not keep patient or research imaging datasets under `public/`. Files in `public/` are copied into the Angular build output and can be served by the frontend.
 
-- all `.yaml` files
-- `train.sh`
+Use the UI file pickers to load a private `.nii` or `.nii.gz` file plus its matching `.bval` file from a local folder outside the web app. The filenames do not need to match; the number of b-values must match the number of diffusion volumes.
 
-Do not edit 174 yaml files manually.
-
-Example bulk path update script (run from `dce_rim/Janna/inference`):
+### 5. Optional backend environment variables
 
 ```bash
-python - <<'PY'
-from pathlib import Path
-
-old = '/old/base/path'
-new = '/new/base/path'
-
-for p in Path('.').glob('*.yaml'):
-		text = p.read_text(encoding='utf-8')
-		updated = text.replace(old, new)
-		if updated != text:
-				p.write_text(updated, encoding='utf-8')
-				print(f'updated {p.name}')
-PY
-```
-
-Then edit `train.sh` with the same new base path.
-
-### 5. Submit job to GPU queue
-
-```bash
-cd dce_rim/Janna/inference
-sbatch train.sh
+export QMRI_ALLOWED_ORIGINS=http://localhost:4200
+export QMRI_BVAL_PATH=/absolute/path/to/bvalues.bval
+export QMRI_LSQ_JOBS=4
 ```
 
 ## Notes and Limitations
 
-- This Angular app is a prototype UI and currently uses mock inference logic.
-- Export buttons in the prototype are UI placeholders.
-- Real training/inference execution is done through HPC scripts in `dce_rim/Janna/inference`.
+- The current backend computes voxel-wise IVIM LSQ maps (`D`, `f`, `D*`) and quality metric (`Adjusted R2`).
+- Export buttons in the UI are still prototype placeholders.
 
 ## Troubleshooting
 
 - If `ng` or Angular commands fail locally, ensure `npm install` completed successfully.
-- If `conda activate atommic2` fails, verify environment creation succeeded and Anaconda module is loaded.
-- If inference fails immediately on cluster, validate all updated paths in yaml files and `train.sh`.
-
-
-‘conda’: dit is de conda environment die je nodig hebt om mijn code te kunnen runnen. Open in deze folder een terminal en run: module load Anaconda3, en daarna: conda env create -f environment.yml, nu kan je als het goed is runnen: conda activate atommic2, en dan heb je de goede environment
-‘data’: hier een kleine uitleg over waar de data staat en hoe het eruit ziet, je kan de documentatie verder bekijken om te zien hoe je de data kunt openen
-‘inference’: dit is het script dat je moet uitvoeren om het getrainde model te runnen op de data.
-Het bevat 174 .yaml files voor 174 timepoints. In deze .yaml files staat het gesavede checkpoint, de plek van de data, etc etc. Hier moet je de paden nog wel even aanpassen als jij ze wilt runnen. Ik zou daarvoor iets van een scriptje schrijven ipv alle 174 files aanpassen
-Het bevat ook een train.sh file, pas hier ook de paden aan. Dit gebruik je om het daadwerkelijk te runnen. Open in deze folder een terminal en run: sbatch train.sh. Dan wordt jouw request in de queue gestopt voor de GPU.
-‘model’: een kleine uitleg over waar de checkpoints staan
-‘parameter maps’: dit zijn de parameter maps die uit het fitting script komen nadat ik mijn model heb gerunt voor de reconstructie, het zijn 4 parameters en je zou deze kunnen inladen met de .m file (dit is een matlab file), je kan er dan ook voor kiezen de colourbar enzo aan te passen
-
-https://github.com/OSIPI/TF2.4_IVIM-MRI_CodeCollection/blob/main/src/original/fitting/OGC_AmsterdamUMC/LSQ_fitting.py
+- If backend fails with NIfTI errors, verify your input is a 4D `.nii` or `.nii.gz` with matching number of b-values.
+- If no `.bval` is uploaded, set `QMRI_BVAL_PATH=/absolute/private/path/to/bvalues.bval` before starting the backend.
