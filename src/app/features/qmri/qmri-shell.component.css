@@ -211,6 +211,12 @@ dd {
   margin-top: 0.45rem;
 }
 
+.export-note {
+  margin-top: 0.65rem;
+  color: #25643b;
+  line-height: 1.45;
+}
+
 @media (max-width: 1220px) {
   .task-column,
   .detail-column {

@@ -398,7 +398,7 @@ export class MapsViewerComponent {
   }
 
   protected setZoom(value: number): void {
-    const next = Math.min(500, Math.max(100, Math.round(value)));
+    const next = Math.min(400, Math.max(100, Math.round(value)));
     this.zoomPercent.set(next);
   }
 

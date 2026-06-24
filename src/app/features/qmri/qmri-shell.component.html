@@ -120,7 +120,7 @@
       </app-maps-viewer>
     </section>
 
-    <aside class="column detail-column" aria-label="Selected voxel details and export placeholders">
+    <aside class="column detail-column" aria-label="Selected voxel details and export tools">
       <article class="card">
         <h2>ROI Summary</h2>
         @if (selectedRoiSummary(); as roi) {
@@ -198,10 +198,14 @@
 
       <article class="card">
         <h2>Export</h2>
-        <button type="button" disabled>Export parameter maps</button>
-        <button type="button" disabled>Export voxel fit CSV</button>
-        <button type="button" disabled>Export report</button>
-        <p class="small">Placeholders for the next POC iteration.</p>
+        <button type="button" [disabled]="!canExportMaps()" (click)="exportParameterMaps()">Export parameter maps (.nii)</button>
+        <button type="button" [disabled]="!canExportVoxelCsv()" (click)="exportVoxelFitCsv()">Export voxel fit CSV</button>
+        <button type="button" [disabled]="!canExportReport()" (click)="exportReport()">Export report (.json)</button>
+        @if (exportMessage(); as message) {
+          <p class="small export-note">{{ message }}</p>
+        } @else {
+          <p class="small">Exports are available after a successful run.</p>
+        }
       </article>
     </aside>
   </section>
