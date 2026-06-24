@@ -204,17 +204,18 @@ def _error_payload(message):
         },
         "voxelFitSupport": False,
         "voxelFit": None,
+        "referenceImage": None,
     }
 
 
-def _build_result_payload(message, bvalues, shape_3d, parameter_arrays, valid_mask_3d, adjusted_r2, signal_4d):
+def _build_result_payload(message, bvalues, shape_3d, parameter_arrays, valid_mask_3d, adjusted_r2, signal_4d, reference_b0_3d=None):
     d_3d, f_3d, dstar_3d, r2_3d = parameter_arrays
     total_voxels = int(np.prod(shape_3d))
     valid_voxels = int(np.sum(valid_mask_3d))
     failed_voxels = total_voxels - valid_voxels
     mean_adjusted_r2 = _finite_stats(adjusted_r2)[2]
 
-    return {
+    result = {
         "status": "success",
         "message": message,
         "metadata": {
@@ -242,6 +243,14 @@ def _build_result_payload(message, bvalues, shape_3d, parameter_arrays, valid_ma
             "encoding": "base64-float32",
         },
     }
+
+    if reference_b0_3d is not None:
+        result["referenceImage"] = {
+            "data": _encode_float32(reference_b0_3d),
+            "encoding": "base64-float32",
+        }
+
+    return result
 
 
 @app.get("/health")
@@ -324,6 +333,18 @@ async def run_inference(
             signal_4d = np.full((*shape_3d, bvalues.size), np.nan, dtype=np.float32)
             signal_4d.reshape(-1, bvalues.size)[valid_indices] = voxel_matrix
 
+            # Extract b=0 reference image from original NIfTI data
+            b0_mask = bvalues == 0
+            b0_indices = np.where(b0_mask)[0]
+            if len(b0_indices) > 0:
+                # Average all b=0 volumes for better anatomical reference
+                reference_b0_3d = np.mean(data_4d[:, :, :, b0_indices], axis=3).astype(np.float32)
+                # Transpose from (x, y, z) to (z, y, x) so z-slices are contiguous
+                # and within each slice pixels are in row-major (y, x) display order
+                reference_b0_3d = np.ascontiguousarray(reference_b0_3d.transpose(2, 1, 0))
+            else:
+                reference_b0_3d = None
+
             return _build_result_payload(
                 message=f"IVIM LSQ fitting completed for {file.filename}.",
                 bvalues=bvalues,
@@ -332,6 +353,7 @@ async def run_inference(
                 valid_mask_3d=valid_mask_3d,
                 adjusted_r2=adjusted_r2,
                 signal_4d=signal_4d,
+                reference_b0_3d=reference_b0_3d,
             )
     except HTTPException as exc:
         return JSONResponse(status_code=exc.status_code, content=_error_payload(str(exc.detail)))

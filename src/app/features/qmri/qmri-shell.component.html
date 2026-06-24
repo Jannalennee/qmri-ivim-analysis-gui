@@ -97,6 +97,7 @@
       <app-maps-viewer
         [inferenceResult]="inferenceResult()"
         [currentSlice]="currentSlice"
+        (sliceChanged)="updateCurrentSlice($event)"
         (voxelSelected)="updateVoxelSelection($event)"
         (roiSelected)="updateRoiSelection($event)">
       </app-maps-viewer>

@@ -103,6 +103,10 @@ export interface QmriInferenceResult {
   qc: IvimQcMetrics;
   voxelFitSupport: boolean;
   voxelFit: IvimVoxelFitData | null;
+  referenceImage?: {
+    data: string;
+    encoding: 'base64-float32';
+  } | null;
 }
 
 export type QmriInferenceStatus = 'idle' | 'running' | 'completed' | 'error';

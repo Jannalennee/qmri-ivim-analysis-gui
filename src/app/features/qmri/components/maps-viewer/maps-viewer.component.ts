@@ -25,6 +25,12 @@ interface VoxelPoint {
   y: number;
 }
 
+interface RgbColor {
+  r: number;
+  g: number;
+  b: number;
+}
+
 interface RoiDraft {
   start: VoxelPoint;
   current: VoxelPoint;
@@ -42,10 +48,12 @@ interface RoiDraft {
 export class MapsViewerComponent {
   readonly inferenceResult = input.required<QmriInferenceResult | null>();
   readonly currentSlice = input<number>(0);
+  readonly sliceChanged = output<number>();
   readonly voxelSelected = output<SelectedVoxelFit | null>();
   readonly roiSelected = output<RoiSummary | null>();
 
   private canvasRef?: ElementRef<HTMLCanvasElement>;
+  private referenceCanvasRef?: ElementRef<HTMLCanvasElement>;
 
   @ViewChild('mapCanvas', { read: ElementRef })
   set mapCanvasRef(ref: ElementRef<HTMLCanvasElement> | undefined) {
@@ -53,9 +61,17 @@ export class MapsViewerComponent {
     this.renderCanvas();
   }
 
+  @ViewChild('referenceCanvas', { read: ElementRef })
+  set referenceCanvasElementRef(ref: ElementRef<HTMLCanvasElement> | undefined) {
+    this.referenceCanvasRef = ref;
+    this.renderReferenceCanvas();
+  }
+
   protected selectedMapIndex = signal(0);
   protected currentSliceSignal = signal(0);
   protected windowLevel = signal<WindowLevel>({ window: 100, level: 50 });
+  protected zoomPercent = signal(180);
+  protected mapOpacity = signal(100);
   protected selectedVoxel = signal<{ x: number; y: number; z: number } | null>(null);
   protected roiDraft = signal<RoiDraft | null>(null);
   protected roiBounds = signal<RoiBounds | null>(null);
@@ -99,6 +115,18 @@ export class MapsViewerComponent {
 
   protected selectedMapKey = computed(() => {
     return this.mapEntries()[this.selectedMapIndex()]?.key ?? null;
+  });
+
+  protected zoomScale = computed(() => this.zoomPercent() / 100);
+
+  protected zoomedCanvasWidth = computed(() => {
+    const slice = this.sliceData();
+    return slice ? Math.round(slice.shape[0] * this.zoomScale()) : 0;
+  });
+
+  protected zoomedCanvasHeight = computed(() => {
+    const slice = this.sliceData();
+    return slice ? Math.round(slice.shape[1] * this.zoomScale()) : 0;
   });
 
   protected sliceData = computed(() => {
@@ -147,14 +175,146 @@ export class MapsViewerComponent {
       }
 
       const normalized = Math.max(0, Math.min(1, (value - minVal) / range));
-      const gray = Math.round(normalized * 255);
-      data[idx] = gray;
-      data[idx + 1] = gray;
-      data[idx + 2] = gray;
+      const color = this.applyColorMap(normalized);
+      data[idx] = color.r;
+      data[idx + 1] = color.g;
+      data[idx + 2] = color.b;
       data[idx + 3] = 255;
     }
 
     return imageData;
+  });
+
+  protected referenceImageData = computed(() => {
+    const result = this.inferenceResult();
+    if (!result || result.status !== 'success') {
+      return null;
+    }
+
+    // Prefer native b=0 reference image if available.
+    // Backend stores this as contiguous (z, y, x), so each z-slice is width*height values.
+    if (result.referenceImage) {
+      const [width, height, depth] = result.metadata.imageShape;
+      const z = Math.min(this.currentSliceSignal(), depth - 1);
+
+      try {
+        const decodedArray = new Float32Array(this.base64ToArrayBuffer(result.referenceImage.data));
+        const sliceSize = width * height;
+        const expectedLength = sliceSize * depth;
+        if (decodedArray.length < expectedLength) {
+          return null;
+        }
+
+        const sliceOffset = z * sliceSize;
+        const values = decodedArray.slice(sliceOffset, sliceOffset + sliceSize);
+
+        // Percentile-based windowing across the full volume for stable brightness
+        const sorted = Array.from(decodedArray).filter(Number.isFinite).sort((a, b) => a - b);
+        if (sorted.length === 0) return null;
+        const minValue = sorted[Math.floor(sorted.length * 0.02)];
+        const maxValue = sorted[Math.floor(sorted.length * 0.98)];
+        const range = maxValue - minValue || 1;
+
+        const imageData = new ImageData(width, height);
+        for (let i = 0; i < values.length; i++) {
+          const idx = i * 4;
+          const gray = Math.round(Math.max(0, Math.min(1, (values[i] - minValue) / range)) * 255);
+          imageData.data[idx] = gray;
+          imageData.data[idx + 1] = gray;
+          imageData.data[idx + 2] = gray;
+          imageData.data[idx + 3] = 255;
+        }
+
+        return imageData;
+      } catch {
+        // Fallback to voxel fit data if decoding fails
+      }
+    }
+
+    // Fallback: use voxel fit data
+    const fit = this.fitArrays();
+    if (!fit) {
+      return null;
+    }
+
+    const [width, height, depth, bCount] = fit.shape;
+    if (width <= 0 || height <= 0 || depth <= 0 || bCount <= 0) {
+      return null;
+    }
+
+    const z = Math.min(this.currentSliceSignal(), depth - 1);
+    const bvalueCount = Math.min(fit.bvalues.length, bCount);
+    if (bvalueCount <= 0) {
+      return null;
+    }
+
+    let referenceBIndex = 0;
+    for (let i = 1; i < bvalueCount; i++) {
+      if (fit.bvalues[i] < fit.bvalues[referenceBIndex]) {
+        referenceBIndex = i;
+      }
+    }
+
+    const values = new Float32Array(width * height);
+    let minValue = Number.POSITIVE_INFINITY;
+    let maxValue = Number.NEGATIVE_INFINITY;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const index = y * width + x;
+        const signalIndex = this.getSignalIndex(x, y, z, referenceBIndex, fit.shape);
+        const value = fit.signals[signalIndex];
+        values[index] = value;
+
+        if (Number.isFinite(value)) {
+          minValue = Math.min(minValue, value);
+          maxValue = Math.max(maxValue, value);
+        }
+      }
+    }
+
+    if (!Number.isFinite(minValue) || !Number.isFinite(maxValue) || minValue === maxValue) {
+      minValue = 0;
+      maxValue = 1;
+    }
+
+    const imageData = new ImageData(width, height);
+    const range = maxValue - minValue || 1;
+
+    for (let i = 0; i < values.length; i++) {
+      const idx = i * 4;
+      const value = values[i];
+      const normalized = Number.isFinite(value)
+        ? Math.max(0, Math.min(1, (value - minValue) / range))
+        : 0;
+      const gray = Math.round(normalized * 255);
+
+      imageData.data[idx] = gray;
+      imageData.data[idx + 1] = gray;
+      imageData.data[idx + 2] = gray;
+      imageData.data[idx + 3] = 255;
+    }
+
+    return imageData;
+  });
+
+  protected legendLabels = computed(() => {
+    const map = this.selectedMap();
+    if (!map) {
+      return { low: '0.0000', mid: '0.5000', high: '1.0000' };
+    }
+
+    const { minValue, maxValue } = this.getDisplayRange(map.minValue, map.maxValue);
+    const { window, level } = this.windowLevel();
+    const low = this.levelToValue(level - window / 2, minValue, maxValue);
+    const high = this.levelToValue(level + window / 2, minValue, maxValue);
+    const mid = (low + high) / 2;
+
+    return {
+      low: this.formatLegendValue(low),
+      mid: this.formatLegendValue(mid),
+      high: this.formatLegendValue(high),
+    };
   });
 
   constructor() {
@@ -166,6 +326,11 @@ export class MapsViewerComponent {
     effect(() => {
       this.canvasImageData();
       this.renderCanvas();
+    });
+
+    effect(() => {
+      this.referenceImageData();
+      this.renderReferenceCanvas();
     });
   }
 
@@ -190,10 +355,12 @@ export class MapsViewerComponent {
   }
 
   protected setSlice(value: number): void {
-    this.currentSliceSignal.set(value);
+    const next = Math.min(this.maxSlice(), Math.max(0, Math.round(value)));
+    this.currentSliceSignal.set(next);
     this.selectedVoxel.set(null);
     this.roiDraft.set(null);
     this.roiBounds.set(null);
+    this.sliceChanged.emit(next);
     this.voxelSelected.emit(null);
     this.roiSelected.emit(null);
   }
@@ -204,6 +371,36 @@ export class MapsViewerComponent {
 
   protected setLevel(value: number): void {
     this.windowLevel.update((current) => ({ ...current, level: value }));
+  }
+
+  protected setZoomFromEvent(event: Event): void {
+    this.setZoom(+(event.target as HTMLInputElement).value);
+  }
+
+  protected setZoom(value: number): void {
+    const next = Math.min(500, Math.max(100, Math.round(value)));
+    this.zoomPercent.set(next);
+  }
+
+  protected increaseZoom(): void {
+    this.setZoom(this.zoomPercent() + 25);
+  }
+
+  protected decreaseZoom(): void {
+    this.setZoom(this.zoomPercent() - 25);
+  }
+
+  protected resetZoom(): void {
+    this.zoomPercent.set(180);
+  }
+
+  protected setOpacityFromEvent(event: Event): void {
+    this.setOpacity(+(event.target as HTMLInputElement).value);
+  }
+
+  protected setOpacity(value: number): void {
+    const next = Math.min(100, Math.max(0, Math.round(value)));
+    this.mapOpacity.set(next);
   }
 
   protected getMapColor(index: number): string {
@@ -323,6 +520,22 @@ export class MapsViewerComponent {
       top: `${(normalized.yStart / height) * rect.height}px`,
       width: `${((normalized.xEnd - normalized.xStart + 1) / width) * rect.width}px`,
       height: `${((normalized.yEnd - normalized.yStart + 1) / height) * rect.height}px`,
+    };
+  }
+
+  protected selectedVoxelStyle(): Record<string, string> | null {
+    const arrays = this.voxelArrays();
+    const canvas = this.canvasRef?.nativeElement;
+    const voxel = this.selectedVoxel();
+    if (!arrays || !canvas || !voxel) {
+      return null;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const [width, height] = arrays.shape;
+    return {
+      left: `${((voxel.x + 0.5) / width) * rect.width}px`,
+      top: `${((voxel.y + 0.5) / height) * rect.height}px`,
     };
   }
 
@@ -504,6 +717,22 @@ export class MapsViewerComponent {
     context.putImageData(imageData, 0, 0);
   }
 
+  private renderReferenceCanvas(): void {
+    const imageData = this.referenceImageData();
+    const canvas = this.referenceCanvasRef?.nativeElement;
+    if (!imageData || !canvas) {
+      return;
+    }
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      console.error('Could not render MRI reference: 2D canvas context is unavailable.');
+      return;
+    }
+
+    context.putImageData(imageData, 0, 0);
+  }
+
   private base64ToArrayBuffer(base64: string): ArrayBuffer {
     const binaryString = atob(base64);
     const bytes = new Uint8Array(binaryString.length);
@@ -522,5 +751,37 @@ export class MapsViewerComponent {
 
   private levelToValue(level: number, min: number, max: number): number {
     return min + (level / 100) * (max - min);
+  }
+
+  private formatLegendValue(value: number): string {
+    return Number.isFinite(value) ? value.toFixed(4) : 'n/a';
+  }
+
+  private applyColorMap(normalized: number): RgbColor {
+    const stops = [
+      { p: 0, c: { r: 24, g: 33, b: 112 } },
+      { p: 0.2, c: { r: 26, g: 110, b: 186 } },
+      { p: 0.4, c: { r: 40, g: 174, b: 128 } },
+      { p: 0.6, c: { r: 138, g: 205, b: 63 } },
+      { p: 0.8, c: { r: 249, g: 188, b: 40 } },
+      { p: 1, c: { r: 215, g: 48, b: 39 } },
+    ];
+
+    const clamped = Math.max(0, Math.min(1, normalized));
+    for (let i = 0; i < stops.length - 1; i++) {
+      const left = stops[i];
+      const right = stops[i + 1];
+      if (clamped <= right.p) {
+        const sectionRange = right.p - left.p || 1;
+        const t = (clamped - left.p) / sectionRange;
+        return {
+          r: Math.round(left.c.r + (right.c.r - left.c.r) * t),
+          g: Math.round(left.c.g + (right.c.g - left.c.g) * t),
+          b: Math.round(left.c.b + (right.c.b - left.c.b) * t),
+        };
+      }
+    }
+
+    return stops[stops.length - 1].c;
   }
 }

@@ -67,6 +67,10 @@ export class QmriShellComponent {
     this.selectedRoiSummary.set(summary);
   }
 
+  protected updateCurrentSlice(slice: number): void {
+    this.currentSlice = slice;
+  }
+
   protected canRun(): boolean {
     return this.validation().status === 'valid' && this.inferenceStatus() !== 'running';
   }
