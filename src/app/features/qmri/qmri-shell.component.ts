@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { NgOptimizedImage } from '@angular/common';
 import { Title } from '@angular/platform-browser';
 
@@ -26,6 +26,42 @@ export class QmriShellComponent {
   protected readonly taskLog = this.sessionStore.taskLog;
   protected readonly selectedVoxelFit = signal<SelectedVoxelFit | null>(null);
   protected readonly selectedRoiSummary = signal<RoiSummary | null>(null);
+  protected readonly validationDelta = computed(() => {
+    const state = this.validation();
+    if (state.volumeCount === undefined || state.bvalueCount === undefined) {
+      return null;
+    }
+    return Math.abs(state.volumeCount - state.bvalueCount);
+  });
+  protected readonly uploadedAtLabel = computed(() => {
+    const iso = this.selectedScan()?.uploadedAtIso;
+    if (!iso) {
+      return null;
+    }
+
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+
+    return new Intl.DateTimeFormat('nl-NL', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(date);
+  });
+  protected readonly validationReadiness = computed(() => {
+    const state = this.validation();
+    if (state.status === 'valid') {
+      return 'Dataset is klaar voor IVIM LSQ fitting.';
+    }
+    if (state.status === 'pending') {
+      return 'Validation is bezig of onvolledig. Controleer of beide bestanden zijn geladen.';
+    }
+    if (state.status === 'invalid') {
+      return 'Los de mismatch op tussen volumes en b-values voordat je de fit start.';
+    }
+    return 'Laad eerst de NIfTI en .bval om de dataset te valideren.';
+  });
   protected currentSlice = 0;
 
   constructor() {

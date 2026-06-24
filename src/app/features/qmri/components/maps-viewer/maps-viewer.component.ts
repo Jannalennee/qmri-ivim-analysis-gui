@@ -170,7 +170,7 @@ export class MapsViewerComponent {
         data[idx] = 0;
         data[idx + 1] = 0;
         data[idx + 2] = 0;
-        data[idx + 3] = 255;
+        data[idx + 3] = 0;
         continue;
       }
 
@@ -344,6 +344,26 @@ export class MapsViewerComponent {
 
   protected setSliceFromEvent(event: Event): void {
     this.setSlice(+(event.target as HTMLInputElement).value);
+  }
+
+  protected setSliceFromInput(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const requestedSlice = Number(input.value);
+    if (!Number.isFinite(requestedSlice)) {
+      input.value = String(this.currentSliceSignal() + 1);
+      return;
+    }
+
+    this.setSlice(requestedSlice - 1);
+    input.value = String(this.currentSliceSignal() + 1);
+  }
+
+  protected increaseSlice(): void {
+    this.setSlice(this.currentSliceSignal() + 1);
+  }
+
+  protected decreaseSlice(): void {
+    this.setSlice(this.currentSliceSignal() - 1);
   }
 
   protected setWindowFromEvent(event: Event): void {

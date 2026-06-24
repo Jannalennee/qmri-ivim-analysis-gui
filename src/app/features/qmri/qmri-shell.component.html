@@ -55,8 +55,25 @@
               <dt>b-values</dt>
               <dd>{{ validation().bvalueCount }}</dd>
             </div>
+            <div>
+              <dt>File size</dt>
+              <dd>{{ (selectedScan()?.sizeMb ?? 0).toFixed(2) }} MB</dd>
+            </div>
+            <div>
+              <dt>Format</dt>
+              <dd>{{ selectedScan()?.format ?? '—' }}</dd>
+            </div>
+            <div>
+              <dt>Difference</dt>
+              <dd>{{ validationDelta() ?? 0 }}</dd>
+            </div>
+            <div>
+              <dt>Uploaded</dt>
+              <dd>{{ uploadedAtLabel() ?? '—' }}</dd>
+            </div>
           </dl>
         }
+        <p class="small validation-readiness">{{ validationReadiness() }}</p>
       </article>
 
       <article class="card">
