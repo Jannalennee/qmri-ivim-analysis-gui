@@ -116,14 +116,14 @@
                     id="slice-number"
                     type="number"
                     class="slice-input"
-                    min="1"
-                    [max]="maxSlice() + 1"
-                    [value]="currentSliceSignal() + 1"
+                    min="0"
+                    [max]="maxSlice()"
+                    [value]="currentSliceSignal()"
                     (change)="setSliceFromInput($event)"
                     (keyup.enter)="setSliceFromInput($event)"
                     aria-label="Current slice number"
                   />
-                  <span class="slice-total">/ {{ maxSlice() + 1 }}</span>
+                  <span class="slice-total">/ {{ maxSlice() }}</span>
                 </div>
                 <button
                   type="button"

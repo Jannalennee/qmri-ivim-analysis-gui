@@ -3,6 +3,7 @@
   flex-direction: column;
   gap: 1rem;
   height: 100%;
+  min-height: 0;
   padding: 0.75rem;
 }
 
@@ -88,6 +89,7 @@
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 92px;
+  grid-template-rows: minmax(0, 1fr) auto;
   grid-template-areas:
     'viewer legend'
     'controls controls';
@@ -98,24 +100,28 @@
   grid-area: viewer;
   display: flex;
   flex-direction: column;
-  min-height: 420px;
+  height: 100%;
+  min-height: 0;
 }
 
 .viewer-canvas {
   flex: 1;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 1px solid #ddd;
   border-radius: 4px;
   background: #fafafa;
-  min-height: 420px;
+  min-height: 0;
   overflow: auto;
 }
 
 .canvas-frame {
   position: relative;
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
   max-width: 100%;
   max-height: 100%;
 }
@@ -138,6 +144,8 @@
   cursor: crosshair;
   position: relative;
   z-index: 10;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .roi-overlay {

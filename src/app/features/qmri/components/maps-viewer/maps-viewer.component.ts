@@ -70,7 +70,7 @@ export class MapsViewerComponent {
   protected selectedMapIndex = signal(0);
   protected currentSliceSignal = signal(0);
   protected windowLevel = signal<WindowLevel>({ window: 100, level: 50 });
-  protected zoomPercent = signal(180);
+  protected zoomPercent = signal(320);
   protected mapOpacity = signal(100);
   protected selectedVoxel = signal<{ x: number; y: number; z: number } | null>(null);
   protected roiDraft = signal<RoiDraft | null>(null);
@@ -350,12 +350,12 @@ export class MapsViewerComponent {
     const input = event.target as HTMLInputElement;
     const requestedSlice = Number(input.value);
     if (!Number.isFinite(requestedSlice)) {
-      input.value = String(this.currentSliceSignal() + 1);
+      input.value = String(this.currentSliceSignal());
       return;
     }
 
-    this.setSlice(requestedSlice - 1);
-    input.value = String(this.currentSliceSignal() + 1);
+    this.setSlice(requestedSlice);
+    input.value = String(this.currentSliceSignal());
   }
 
   protected increaseSlice(): void {
@@ -411,7 +411,7 @@ export class MapsViewerComponent {
   }
 
   protected resetZoom(): void {
-    this.zoomPercent.set(180);
+    this.zoomPercent.set(320);
   }
 
   protected setOpacityFromEvent(event: Event): void {
