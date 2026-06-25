@@ -33,6 +33,14 @@
 	gap: 1rem;
 }
 
+.workflow-overview {
+	display: grid;
+	grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+	gap: 1rem;
+	align-items: stretch;
+	margin-bottom: 1rem;
+}
+
 .column {
 	width: 290px;
 	display: grid;
@@ -121,6 +129,10 @@
 }
 
 @media (max-width: 1220px) {
+	.workflow-overview {
+		grid-template-columns: 1fr;
+	}
+
 	.shell-grid {
 		flex-direction: column;
 	}
@@ -145,5 +157,152 @@
 
 	.shell-header h1 {
 		font-size: 1.15rem;
+	}
+}
+
+/* Workflow indicators are global-scoped to ensure they always render with color. */
+.qmri-shell .progress-section {
+	padding: 0.8rem;
+	background: #f6f7f8;
+	border: 1px solid #d6dade;
+	border-radius: 6px;
+	margin-bottom: 0;
+}
+
+.qmri-shell .progress-info {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 0.55rem;
+	font-size: 0.82rem;
+}
+
+.qmri-shell .progress-label {
+	font-weight: 700;
+	color: #4f5962;
+}
+
+.qmri-shell .progress-count {
+	color: #4f5962;
+	font-size: 0.77rem;
+	font-weight: 700;
+}
+
+.qmri-shell .progress-bar {
+	height: 6px;
+	background: #d7dde2;
+	border-radius: 999px;
+	max-width: 220px;
+	overflow: hidden;
+}
+
+.qmri-shell .progress-fill {
+	height: 100%;
+	background: #e67e22;
+	transition: width 0.4s ease;
+}
+
+.qmri-shell .steps-indicator {
+	position: relative;
+	display: grid;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+	gap: 0.5rem;
+	padding: 0.75rem;
+	background: #f6f7f8;
+	border: 1px solid #d6dade;
+	border-radius: 6px;
+	margin-bottom: 0;
+}
+
+.qmri-shell .steps-indicator::before {
+	content: '';
+	position: absolute;
+	left: 1rem;
+	right: 1rem;
+	top: 1.7rem;
+	height: 2px;
+	background: #d7dde2;
+	z-index: 0;
+}
+
+.qmri-shell .step {
+	position: relative;
+	z-index: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.4rem;
+	text-align: center;
+	opacity: 1;
+	transition: transform 0.2s ease;
+}
+
+.qmri-shell .step.active {
+	transform: translateY(-1px);
+}
+
+.qmri-shell .step.disabled {
+	opacity: 0.85;
+}
+
+.qmri-shell .step-badge {
+	width: 34px;
+	height: 34px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	background: #bdc3c7;
+	color: #fff;
+	font-weight: 700;
+	font-size: 0.9rem;
+	border: 2px solid #aeb6bc;
+	transition: all 0.3s ease;
+}
+
+.qmri-shell .step.active .step-badge {
+	background: #e67e22;
+	border-color: #d66e12;
+	box-shadow: 0 0 0 4px rgba(230, 126, 34, 0.24), 0 0 16px rgba(230, 126, 34, 0.38);
+}
+
+.qmri-shell .step.completed .step-badge {
+	background: #27ae60;
+	border-color: #1e8449;
+}
+
+.qmri-shell .step.disabled .step-badge {
+	background: #bdc3c7;
+	border-color: #aeb6bc;
+	color: #eef1f3;
+}
+
+.qmri-shell .step-label {
+	font-size: 0.72rem;
+	font-weight: 600;
+	color: #5e6870;
+	white-space: nowrap;
+}
+
+.qmri-shell .step.active .step-label {
+	color: #d66e12;
+}
+
+.qmri-shell .step.completed .step-label {
+	color: #1e8449;
+}
+
+.qmri-shell .step.disabled .step-label {
+	color: #7b868f;
+}
+
+@media (max-width: 740px) {
+	.qmri-shell .steps-indicator {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		row-gap: 0.75rem;
+	}
+
+	.qmri-shell .steps-indicator::before {
+		display: none;
 	}
 }

@@ -9,10 +9,38 @@
       priority
     />
     <div>
-      <h1 id="page-title">qMRI GUI</h1>
+      <h1 id="page-title">qMRI Graphic User Interface</h1>
       <p class="subtitle">Proof-of-concept workflow for loading qMRI data, running analysis, and inspecting maps.</p>
     </div>
   </header>
+
+  <section class="workflow-overview" aria-label="Workflow overview">
+    <section class="progress-section" aria-label="Workflow progress">
+      <div class="progress-info">
+        <span class="progress-label">Workflow progress</span>
+        <span class="progress-count">{{ workflowCompletedCount() }}/{{ workflowSteps.length }} steps</span>
+      </div>
+      <div class="progress-bar" role="progressbar" [attr.aria-valuenow]="workflowCompletedCount()" aria-valuemin="0" [attr.aria-valuemax]="workflowSteps.length" aria-label="Completed workflow steps">
+        <div class="progress-fill" [style.width.%]="workflowProgressPercent()"></div>
+      </div>
+    </section>
+
+    <section class="steps-indicator" aria-label="Workflow steps">
+      @for (step of workflowSteps; track step.number) {
+        @let state = workflowStepStates()[step.number - 1];
+        <div
+          class="step"
+          [class.completed]="state === 'completed'"
+          [class.active]="state === 'active'"
+          [class.disabled]="state === 'upcoming'"
+          [attr.aria-current]="state === 'active' ? 'step' : null"
+        >
+          <span class="step-badge" aria-hidden="true">{{ step.number }}</span>
+          <span class="step-label">{{ step.number }}. {{ step.label }}</span>
+        </div>
+      }
+    </section>
+  </section>
 
   <section class="shell-grid" aria-label="qMRI analysis workspace">
     <aside class="column task-column" aria-label="Dataset loading and analysis start">

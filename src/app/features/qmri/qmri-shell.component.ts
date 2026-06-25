@@ -7,6 +7,15 @@ import { QmriSessionStore } from './state/qmri-session.store';
 import { MapsViewerComponent } from './components/maps-viewer/maps-viewer.component';
 
 const EXPORT_MAP_KEYS: readonly IvimParameterMapKey[] = ['D', 'f', 'Dstar', 'r2', 'validMask'];
+const WORKFLOW_STEPS = [
+  { number: 1, label: 'Dataset' },
+  { number: 2, label: 'Validation' },
+  { number: 3, label: 'Analysis' },
+  { number: 4, label: 'Maps' },
+  { number: 5, label: 'Export' },
+] as const;
+
+type WorkflowStepState = 'completed' | 'active' | 'upcoming';
 
 @Component({
   selector: 'app-qmri-shell',
@@ -29,6 +38,43 @@ export class QmriShellComponent {
   protected readonly selectedVoxelFit = signal<SelectedVoxelFit | null>(null);
   protected readonly selectedRoiSummary = signal<RoiSummary | null>(null);
   protected readonly exportMessage = signal<string | null>(null);
+  protected readonly workflowSteps = WORKFLOW_STEPS;
+  protected readonly workflowStepStates = computed<readonly WorkflowStepState[]>(() => {
+    const hasDataset = !!this.selectedScan() && !!this.selectedBvalFileName();
+    const validationReady = hasDataset && this.validation().status === 'valid';
+    const analysisReady = validationReady && this.inferenceResult()?.status === 'success';
+    const mapsReviewed = analysisReady && (!!this.selectedVoxelFit() || !!this.selectedRoiSummary());
+    const exportReady = mapsReviewed && (this.exportMessage() ?? '').toLowerCase().startsWith('exported');
+
+    const completionFlags = [hasDataset, validationReady, analysisReady, mapsReviewed, exportReady] as const;
+    const firstIncompleteIndex = completionFlags.findIndex((flag) => !flag);
+    const activeIndex = firstIncompleteIndex === -1 ? -1 : firstIncompleteIndex;
+
+    return this.workflowSteps.map((_, index) => {
+      if (completionFlags[index]) {
+        return 'completed';
+      }
+
+      if (index === activeIndex) {
+        return 'active';
+      }
+
+      return 'upcoming';
+    });
+  });
+  protected readonly workflowCompletedCount = computed(() => {
+    return this.workflowStepStates().filter((state) => state === 'completed').length;
+  });
+  protected readonly workflowCurrentStep = computed(() => {
+    const activeIndex = this.workflowStepStates().findIndex((state) => state === 'active');
+    if (activeIndex === -1) {
+      return this.workflowSteps.length;
+    }
+    return activeIndex + 1;
+  });
+  protected readonly workflowProgressPercent = computed(() => {
+    return Math.round((this.workflowCompletedCount() / this.workflowSteps.length) * 100);
+  });
   protected readonly validationDelta = computed(() => {
     const state = this.validation();
     if (state.volumeCount === undefined || state.bvalueCount === undefined) {
@@ -68,7 +114,7 @@ export class QmriShellComponent {
   protected currentSlice = 0;
 
   constructor() {
-    this.pageTitle.setTitle('qMRI GUI');
+    this.pageTitle.setTitle('qMRI GUI (Graphic User Interface)');
   }
 
   protected async onNiftiInput(event: Event): Promise<void> {
