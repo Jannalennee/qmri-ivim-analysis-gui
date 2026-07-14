@@ -11,21 +11,21 @@ The GUI is a qMRI proof of concept, not a finished clinical or research product.
 What currently works:
 
 - Load a private 4D diffusion NIfTI file (`.nii` or `.nii.gz`).
-- Load a matching b-values file (`.bval`).
+- Load a matching b-values file (`.bval`, `.bvals`, or plain-text `.txt`).
 - Validate that the number of b-values matches the number of diffusion volumes.
 - Run IVIM least-squares fitting on the local FastAPI backend.
 - View IVIM parameter maps in the browser.
 - Switch between `D`, `f`, `D*`, adjusted R2, and valid-mask maps.
 - Scroll through slices.
-- Adjust simple window and level display controls.
+- Adjust opacity, zoom, window, and level display controls.
 - Click a voxel to inspect the measured signal and fitted IVIM curve.
-- Draw a rectangular ROI on a map slice and view basic summary statistics.
+- Draw a rectangular ROI on a map slice and view ROI summary statistics.
+- Draw a freeform ROI point-by-point, then close it with `Finish ROI`.
+- View analysis timing details (start time and duration).
+- Export parameter maps, valid mask, ROI mask, selected-voxel CSV, voxel-fit graph, and analysis report JSON.
 
 Still placeholder or future work:
 
-- Export parameter maps.
-- Export voxel-fit CSV files.
-- Export reports.
 - More qMRI models or workflows beyond IVIM-LSQ.
 - Production-level error handling, authentication, deployment, and data governance.
 
@@ -47,16 +47,17 @@ Center panel:
 - View the parameter map canvas.
 - Choose which parameter map to display.
 - Move through slices with the Z-slice slider.
-- Change window and level for display.
+- Change zoom, opacity, window, and level for display.
 - Click a voxel for fit inspection.
 - Drag a rectangle for ROI statistics.
+- Draw a freeform ROI by placing points and pressing `Finish ROI`.
 
 Right column:
 
 - View ROI summary statistics.
 - View selected voxel parameters and the fit graph.
-- View global fit-quality metrics.
-- See export placeholders for future development.
+- View analysis details including run start time and duration.
+- Export maps, masks, selected voxel data, graph, and report files.
 
 ## Input Data
 
@@ -65,7 +66,7 @@ Use private/local data only. Do not place patient, research, or example imaging 
 The GUI expects:
 
 - A 4D diffusion MRI NIfTI file: `.nii` or `.nii.gz`.
-- A matching b-values file: `.bval`.
+- A matching b-values file: `.bval`, `.bvals`, or plain-text `.txt`.
 
 The NIfTI file must have shape like:
 
@@ -73,9 +74,9 @@ The NIfTI file must have shape like:
 x, y, z, diffusion-volume
 ```
 
-The `.bval` file must contain one b-value for every diffusion volume in the NIfTI file. For example, if the NIfTI contains 16 diffusion volumes, the `.bval` file must contain 16 b-values.
+The b-values file must contain one b-value for every diffusion volume in the NIfTI file. For example, if the NIfTI contains 16 diffusion volumes, the b-values file must contain 16 b-values.
 
-The filenames do not need to match when both files are uploaded through the GUI. The backend also supports a private fallback b-values path through `QMRI_BVAL_PATH`, but uploading the `.bval` file in the GUI is the clearest workflow.
+The filenames do not need to match when both files are uploaded through the GUI. The backend also supports a private fallback b-values path through `QMRI_BVAL_PATH`, but uploading the b-values file in the GUI is the clearest workflow.
 
 ## Project Structure
 
@@ -209,6 +210,8 @@ The frontend expects the backend to run on port `8000`.
 9. Use the center map viewer to inspect the parameter maps.
 10. Click a voxel to inspect the fit graph in the right column.
 11. Drag a rectangle on the map to calculate ROI summary statistics.
+12. Optional: choose freeform ROI, place points on the map, and click `Finish ROI`.
+13. Optional: export maps, masks, selected voxel CSV, graph, or analysis report.
 
 ## Optional Backend Settings
 
