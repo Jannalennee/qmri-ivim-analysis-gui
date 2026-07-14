@@ -64,7 +64,7 @@ def _load_nifti(path):
     data = np.asarray(img.get_fdata(), dtype=float)
     if data.ndim != 4:
         raise HTTPException(status_code=422, detail="Expected a 4D IVIM NIfTI file (x,y,z,b).")
-    return data
+    return img, data
 
 
 def _prepare_voxel_matrix(data_4d, bvalues, max_voxels):
@@ -208,12 +208,51 @@ def _error_payload(message):
     }
 
 
-def _build_result_payload(message, bvalues, shape_3d, parameter_arrays, valid_mask_3d, adjusted_r2, signal_4d, reference_b0_3d=None):
+def _build_result_payload(
+    message,
+    bvalues,
+    shape_3d,
+    parameter_arrays,
+    valid_mask_3d,
+    adjusted_r2,
+    signal_4d,
+    reference_b0_3d=None,
+    nifti_image=None,
+    source_file_name=None,
+    source_bval_file_name=None,
+    run_start_iso=None,
+    run_duration_ms=None,
+):
     d_3d, f_3d, dstar_3d, r2_3d = parameter_arrays
     total_voxels = int(np.prod(shape_3d))
     valid_voxels = int(np.sum(valid_mask_3d))
     failed_voxels = total_voxels - valid_voxels
     mean_adjusted_r2 = _finite_stats(adjusted_r2)[2]
+    unique_bvalues = sorted(float(value) for value in np.unique(bvalues))
+
+    voxel_spacing = None
+    affine = None
+    orientation_labels = None
+    if nifti_image is not None:
+        try:
+            zooms = nifti_image.header.get_zooms()
+            if len(zooms) >= 3:
+                voxel_spacing = [float(zooms[0]), float(zooms[1]), float(zooms[2])]
+        except Exception:
+            voxel_spacing = None
+
+        try:
+            affine_matrix = np.asarray(nifti_image.affine, dtype=float)
+            affine = [float(value) for value in affine_matrix.flatten(order="C")]
+        except Exception:
+            affine = None
+
+        try:
+            ax = nib.aff2axcodes(nifti_image.affine)
+            if len(ax) >= 3:
+                orientation_labels = {"x": str(ax[0]), "y": str(ax[1]), "z": str(ax[2])}
+        except Exception:
+            orientation_labels = None
 
     result = {
         "status": "success",
@@ -223,6 +262,12 @@ def _build_result_payload(message, bvalues, shape_3d, parameter_arrays, valid_ma
             "numberOfSlices": int(shape_3d[2]),
             "numberOfBValues": int(bvalues.size),
             "bValues": [float(value) for value in bvalues],
+            "uniqueBValues": unique_bvalues,
+            "voxelSpacing": voxel_spacing,
+            "affine": affine,
+            "orientationLabels": orientation_labels,
+            "sourceFileName": source_file_name,
+            "sourceBvalFileName": source_bval_file_name,
         },
         "parameterMaps": {
             "D": _parameter_map("D", "mm2/s", d_3d),
@@ -235,6 +280,14 @@ def _build_result_payload(message, bvalues, shape_3d, parameter_arrays, valid_ma
             "meanAdjustedR2": mean_adjusted_r2,
             "validVoxelPercentage": (valid_voxels / total_voxels * 100) if total_voxels else 0.0,
             "failedVoxelCount": failed_voxels,
+            "validVoxelCount": valid_voxels,
+            "evaluatedVoxelCount": total_voxels,
+        },
+        "analysisInfo": {
+            "modelName": "IVIM least-squares fitting",
+            "runStartIso": run_start_iso,
+            "runDurationMs": run_duration_ms,
+            "softwareVersion": app.version,
         },
         "voxelFitSupport": True,
         "voxelFit": {
@@ -274,6 +327,7 @@ async def run_inference(
     maxVoxels: str = Form("30000"),
 ):
     try:
+        run_start = datetime.now(timezone.utc)
         max_voxels = int(np.clip(_safe_int(maxVoxels, "maxVoxels"), 2000, 30000))
 
         if not file.filename:
@@ -297,7 +351,7 @@ async def run_inference(
             )
 
             bvalues = _load_bvalues(runtime_bvals_path)
-            data_4d = _load_nifti(runtime_data_path)
+            nifti_image, data_4d = _load_nifti(runtime_data_path)
 
             voxel_matrix, valid_indices, shape_3d, _ = _prepare_voxel_matrix(
                 data_4d,
@@ -345,6 +399,8 @@ async def run_inference(
             else:
                 reference_b0_3d = None
 
+            duration_ms = int((datetime.now(timezone.utc) - run_start).total_seconds() * 1000)
+
             return _build_result_payload(
                 message=f"IVIM LSQ fitting completed for {file.filename}.",
                 bvalues=bvalues,
@@ -354,6 +410,11 @@ async def run_inference(
                 adjusted_r2=adjusted_r2,
                 signal_4d=signal_4d,
                 reference_b0_3d=reference_b0_3d,
+                nifti_image=nifti_image,
+                source_file_name=file.filename,
+                source_bval_file_name=bvalFile.filename if bvalFile is not None and bvalFile.filename else None,
+                run_start_iso=run_start.isoformat(),
+                run_duration_ms=duration_ms,
             )
     except HTTPException as exc:
         return JSONResponse(status_code=exc.status_code, content=_error_payload(str(exc.detail)))

@@ -1,82 +1,94 @@
 <div class="maps-viewer">
-  @if (inferenceResult(); as result) {
-    <div class="map-selector">
+  @if (!hasInferenceResult() && previewDataset()) {
+    <section class="preview-banner">
+      <h3>Preview input data</h3>
+      <p>Inspect the original diffusion image before running analysis.</p>
+      <p class="small">{{ uniqueBvalueSummary() }}</p>
+    </section>
+  }
+
+  @if (hasInferenceResult()) {
+    <section class="map-selector">
       <h3>Parameter map</h3>
       <div class="map-buttons">
         @for (entry of mapEntries(); track entry.key; let i = $index) {
           <button
             type="button"
             class="map-button"
-            [class.selected]="isSelected(i)"
+            [class.selected]="selectedMapIndex() === i"
             (click)="selectMap(i)"
-            [style.border-color]="getMapColor(i)"
           >
-            {{ entry.map.displayName }}
+            {{ mapLabel(entry) }}
           </button>
         }
       </div>
-    </div>
+    </section>
+  }
 
-    @if (decodeError(); as error) {
-      <div class="decode-error" role="alert">
-        {{ error }}
+  @if (decodeError(); as error) {
+    <div class="decode-error" role="alert">{{ error }}</div>
+  }
+
+  @if (backgroundImageData(); as bgImage) {
+    <section class="map-info">
+      <div>
+        <strong>
+          @if (hasInferenceResult()) {
+            {{ selectedMapEntry()?.map?.displayName ?? 'Map' }}
+          } @else {
+            Preview input data
+          }
+        </strong>
+        <p class="small">Slice {{ currentSliceSignal() }} / {{ maxSlice() }} | Volume {{ currentVolumeSignal() }} / {{ maxVolume() }} | b={{ currentBvalueLabel() }}</p>
       </div>
-    }
+    </section>
 
-    @if (selectedMap(); as map) {
-      <div class="map-display">
-        <div class="map-info">
-          <strong>{{ map.displayName }}</strong>
-          <span class="map-stats">
-            Slice {{ currentSliceSignal() }} / {{ maxSlice() }} | Mean: {{ map.meanValue.toFixed(4) }} {{ map.unit }}
-          </span>
+    <section class="viewer-layout">
+      <div class="viewer-main-row">
+        <div class="viewer-canvas" #viewport>
+          <div
+            class="canvas-frame"
+            [style.width.px]="zoomedCanvasWidth()"
+            [style.height.px]="zoomedCanvasHeight()"
+            (wheel)="onCanvasWheel($event)"
+          >
+            <canvas
+              #backgroundCanvas
+              class="background-canvas"
+              [width]="bgImage.width"
+              [height]="bgImage.height"
+            ></canvas>
+            <canvas
+              #overlayCanvas
+              class="overlay-canvas"
+              [width]="bgImage.width"
+              [height]="bgImage.height"
+              [style.opacity]="hasInferenceResult() ? mapOpacity() / 100 : 0"
+              (click)="selectVoxelFromCanvas($event)"
+              (pointerdown)="onPointerDown($event)"
+              (pointermove)="onPointerMove($event)"
+              (pointerup)="onPointerUp($event)"
+            ></canvas>
+            @if (roiOverlayStyle(); as style) {
+              <div class="roi-overlay" [ngStyle]="style"></div>
+            }
+            @if (selectedVoxelStyle(); as style) {
+              <div class="voxel-marker" [ngStyle]="style"></div>
+            }
+            @if (polygonPath(); as polygon) {
+              <svg class="polygon-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                <path [attr.d]="polygon" [class.closed]="polygonClosed()"></path>
+              </svg>
+            }
+            @if (!polygonClosed()) {
+              @for (point of polygonDisplayPoints(); track point.id) {
+                <div class="polygon-point" [style.left]="point.left" [style.top]="point.top"></div>
+              }
+            }
+          </div>
         </div>
 
-        <div class="viewer-layout">
-          <div class="viewer-container">
-            <div class="viewer-canvas">
-              @if (canvasImageData(); as imageData) {
-                <div class="canvas-frame">
-                  <canvas
-                    #referenceCanvas
-                    class="reference-canvas-overlay"
-                    [width]="imageData.width"
-                    [height]="imageData.height"
-                  ></canvas>
-                  <canvas
-                    #mapCanvas
-                    id="map-canvas"
-                    class="image-canvas"
-                    [width]="imageData.width"
-                    [height]="imageData.height"
-                    [style.width.px]="zoomedCanvasWidth()"
-                    [style.height.px]="zoomedCanvasHeight()"
-                    [style.opacity]="mapOpacity() / 100"
-                    (click)="selectVoxelFromCanvas($event)"
-                    (pointerdown)="startRoi($event)"
-                    (pointermove)="updateRoi($event)"
-                    (pointerup)="finishRoi($event)"
-                    (pointercancel)="cancelRoi($event)"
-                  ></canvas>
-                  @if (roiOverlayStyle(); as style) {
-                    <div class="roi-overlay" [ngStyle]="style"></div>
-                  }
-                  @if (selectedVoxelStyle(); as style) {
-                    <div class="voxel-marker" [ngStyle]="style"></div>
-                  }
-                </div>
-              } @else if (decodeError()) {
-                <div class="canvas-placeholder error">
-                  <p>Parameter map voxel data could not be decoded.</p>
-                </div>
-              } @else {
-                <div class="canvas-placeholder">
-                  <p>Loading voxel data...</p>
-                </div>
-              }
-            </div>
-          </div>
-
+        @if (showContinuousLegend()) {
           <div class="color-legend">
             <label>Color scale</label>
             <div class="legend-body">
@@ -88,143 +100,166 @@
               </div>
             </div>
           </div>
+        }
+      </div>
 
-          <div class="controls-section">
-            <div class="slice-control">
-              <label for="slice-slider">Slice (Z)</label>
+      <div class="controls">
+        <div class="control-row">
+          <label for="slice-slider">Z-slice</label>
+          <input
+            id="slice-slider"
+            type="range"
+            min="0"
+            [max]="maxSlice()"
+            [value]="currentSliceSignal()"
+            (input)="setSliceFromEvent($event)"
+          />
+          <div class="slice-stepper" role="group" aria-label="Slice controls">
+            <button type="button" (click)="decrementSlice()" [disabled]="currentSliceSignal() <= 0">-</button>
+            <span>{{ currentSliceSignal() }} / {{ maxSlice() }}</span>
+            <button type="button" (click)="incrementSlice()" [disabled]="currentSliceSignal() >= maxSlice()">+</button>
+          </div>
+        </div>
+
+        <div class="control-row">
+          <label for="volume-slider">Diffusion volume</label>
+          <input
+            id="volume-slider"
+            type="range"
+            min="0"
+            [max]="maxVolume()"
+            [value]="currentVolumeSignal()"
+            (input)="setVolumeFromEvent($event)"
+          />
+        </div>
+
+        <div class="control-row">
+          <label for="background-select">Background image</label>
+          <select id="background-select" [value]="backgroundMode()" (change)="setBackgroundMode($any($event.target).value)">
+            <option value="volume">Reference MRI</option>
+            <option value="mean">Mean diffusion image</option>
+          </select>
+          <p class="small">{{ backgroundSelectionLabel() }}</p>
+        </div>
+
+        @if (hasInferenceResult()) {
+          <div class="control-row">
+            <label for="opacity-slider">Map opacity <span>{{ opacityLabel() }}</span></label>
+            <input
+              id="opacity-slider"
+              type="range"
+              min="0"
+              max="100"
+              [value]="mapOpacity()"
+              (input)="setOpacityFromEvent($event)"
+            />
+          </div>
+        }
+
+        <div class="control-row">
+          <label for="zoom-slider">Zoom <span>{{ zoomLabel() }}</span></label>
+          <input
+            id="zoom-slider"
+            type="range"
+            min="100"
+            max="500"
+            [value]="zoomPercent()"
+            (input)="setZoomFromEvent($event)"
+          />
+          <button type="button" (click)="resetView()">Reset view</button>
+        </div>
+
+        @if (hasInferenceResult()) {
+          <div class="control-row">
+            <label for="wl-target">Window/level target</label>
+            <select id="wl-target" [value]="windowLevelTarget()" (change)="setWindowLevelTarget($any($event.target).value)">
+              <option value="background">Background MRI image</option>
+              @if (selectedMapEntry()?.key !== 'validMask') {
+                <option value="map">Selected parameter map</option>
+              }
+            </select>
+          </div>
+        }
+
+        @if (showWindowLevelControls()) {
+          <div class="window-level-grid">
+            <div class="control-row compact-control">
+              <label for="window-slider">Window <span>{{ windowLabel() }}</span></label>
               <input
-                id="slice-slider"
+                id="window-slider"
                 type="range"
-                min="0"
-                [max]="maxSlice()"
-                [value]="currentSliceSignal()"
-                (input)="setSliceFromEvent($event)"
-                class="slider"
+                min="1"
+                max="200"
+                [value]="windowLevelTarget() === 'map' ? mapWindowLevel().window : backgroundWindowLevel().window"
+                (input)="setWindowFromEvent($event)"
               />
-              <div class="slice-stepper">
-                <button
-                  type="button"
-                  class="slice-step"
-                  (click)="decreaseSlice()"
-                  [disabled]="currentSliceSignal() <= 0"
-                  aria-label="Go to previous slice"
-                >
-                  -
-                </button>
-                <div class="slice-counter-wrap">
-                  <input
-                    id="slice-number"
-                    type="number"
-                    class="slice-input"
-                    min="0"
-                    [max]="maxSlice()"
-                    [value]="currentSliceSignal()"
-                    (change)="setSliceFromInput($event)"
-                    (keyup.enter)="setSliceFromInput($event)"
-                    aria-label="Current slice number"
-                  />
-                  <span class="slice-total">/ {{ maxSlice() }}</span>
-                </div>
-                <button
-                  type="button"
-                  class="slice-step"
-                  (click)="increaseSlice()"
-                  [disabled]="currentSliceSignal() >= maxSlice()"
-                  aria-label="Go to next slice"
-                >
-                  +
-                </button>
-              </div>
             </div>
 
-            <div class="zoom-control">
-              <label for="zoom-slider">Zoom</label>
-              <div class="zoom-actions">
-                <button type="button" (click)="decreaseZoom()">-</button>
-                <input
-                  id="zoom-slider"
-                  type="range"
-                  min="100"
-                  max="400"
-                  [value]="zoomPercent()"
-                  (input)="setZoomFromEvent($event)"
-                  class="slider"
-                />
-                <button type="button" (click)="increaseZoom()">+</button>
-              </div>
-              <div class="zoom-meta">
-                <span>{{ zoomPercent() }}%</span>
-                <button type="button" (click)="resetZoom()">Reset</button>
-              </div>
-            </div>
-
-            <div class="windowing-controls">
-              <div class="window-control">
-                <label for="window-slider">Window</label>
-                <input
-                  id="window-slider"
-                  type="range"
-                  min="1"
-                  max="200"
-                  [value]="windowLevel().window"
-                  (input)="setWindowFromEvent($event)"
-                  class="slider"
-                />
-                <span class="value-display">{{ windowLevel().window }}</span>
-              </div>
-
-              <div class="level-control">
-                <label for="level-slider">Level</label>
-                <input
-                  id="level-slider"
-                  type="range"
-                  min="0"
-                  max="100"
-                  [value]="windowLevel().level"
-                  (input)="setLevelFromEvent($event)"
-                  class="slider"
-                />
-                <span class="value-display">{{ windowLevel().level }}</span>
-              </div>
-            </div>
-
-            <div class="opacity-control">
-              <label for="opacity-slider">Map Opacity</label>
+            <div class="control-row compact-control">
+              <label for="level-slider">Level <span>{{ levelLabel() }}</span></label>
               <input
-                id="opacity-slider"
+                id="level-slider"
                 type="range"
                 min="0"
                 max="100"
-                [value]="mapOpacity()"
-                (input)="setOpacityFromEvent($event)"
-                class="slider"
+                [value]="windowLevelTarget() === 'map' ? mapWindowLevel().level : backgroundWindowLevel().level"
+                (input)="setLevelFromEvent($event)"
               />
-              <span class="value-display">{{ mapOpacity() }}%</span>
             </div>
+          </div>
+          <div class="control-row">
+            <button type="button" (click)="applyAutoWindowLevel()">Auto window/level</button>
+          </div>
+        }
 
-            <div class="map-details">
-              <p><strong>Parameter:</strong> {{ map.displayName }}</p>
-              <p><strong>Unit:</strong> {{ map.unit }}</p>
-              <p><strong>Min:</strong> {{ map.minValue.toFixed(6) }}</p>
-              <p><strong>Max:</strong> {{ map.maxValue.toFixed(6) }}</p>
-              <p><strong>Mean:</strong> {{ map.meanValue.toFixed(6) }}</p>
+        @if (hasInferenceResult()) {
+          @if (selectedMapEntry()?.key === 'validMask') {
+            <div class="control-row">
+              <p class="small">This mask indicates which voxels were marked as valid by the analysis result.</p>
+              <button type="button" (click)="toggleMaskValid()">Show valid voxels: {{ showValidMaskVoxels() ? 'On' : 'Off' }}</button>
+              <button type="button" (click)="toggleMaskInvalid()">Show invalid voxels: {{ showInvalidMaskVoxels() ? 'On' : 'Off' }}</button>
+              <button type="button" (click)="toggleMaskOutline()">Show mask outline: {{ showMaskOutline() ? 'On' : 'Off' }}</button>
+              <div class="mask-legend">
+                <span><i class="valid"></i> Green: Valid voxel</span>
+                <span><i class="invalid"></i> Red: Invalid voxel</span>
+                <span><i class="transparent"></i> Transparent: Background/outside image</span>
+              </div>
+              @if (maskSummaryLabel(); as maskSummary) {
+                <dl class="mask-stats">
+                  <div><dt>Valid voxels</dt><dd>{{ maskSummary.valid }}</dd></div>
+                  <div><dt>Invalid voxels</dt><dd>{{ maskSummary.invalid }}</dd></div>
+                  <div><dt>Total evaluated voxels</dt><dd>{{ maskSummary.total }}</dd></div>
+                  <div><dt>Valid percentage</dt><dd>{{ maskSummary.validPercentage }}</dd></div>
+                  <div><dt>Invalid percentage</dt><dd>{{ maskSummary.invalidPercentage }}</dd></div>
+                </dl>
+              }
+            </div>
+          }
+
+          @if (mapStats(); as stats) {
+            <div class="control-row map-details">
+              <p><strong>Parameter:</strong> {{ stats.name }}</p>
+              <p><strong>Unit:</strong> {{ stats.unit }}</p>
+              <p title="{{ stats.minRaw }}"><strong>Min:</strong> {{ stats.min }}</p>
+              <p title="{{ stats.maxRaw }}"><strong>Max:</strong> {{ stats.max }}</p>
+              <p title="{{ stats.meanRaw }}"><strong>Mean:</strong> {{ stats.mean }}</p>
               @if (selectedVoxel(); as voxel) {
                 <p><strong>Voxel:</strong> {{ voxel.x }}, {{ voxel.y }}, {{ voxel.z }}</p>
               } @else {
-                <p><strong>Voxel:</strong> click the map to inspect a fit</p>
+                <p><strong>Voxel:</strong> Select a voxel on the parameter map.</p>
               }
             </div>
-          </div>
-        </div>
-            </div>
-    } @else {
-      <div class="empty-state">
-        <p>Select a map to view</p>
+          }
+        }
       </div>
-    }
+    </section>
   } @else {
-    <div class="empty-state">
-      <p>No inference result yet. Upload data and run analysis.</p>
-    </div>
+    <section class="empty-state">
+      @if (previewDataset()) {
+        <p>Preview data is preparing...</p>
+      } @else {
+        <p>No diffusion data available yet. Select both files and validate input to preview.</p>
+      }
+    </section>
   }
 </div>

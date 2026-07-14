@@ -43,6 +43,7 @@ export class QmriDataIngestService {
         fileName: file.name,
         format,
         sizeMb,
+        sizeBytes: file.size,
         uploadedAtIso: new Date().toISOString()
       }
     };

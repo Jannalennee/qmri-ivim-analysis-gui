@@ -2,11 +2,19 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { NgOptimizedImage } from '@angular/common';
 import { Title } from '@angular/platform-browser';
 
-import { IvimParameterMapKey, QmriInferenceResult, RoiSummary, SelectedVoxelFit } from './domain/qmri-inference.model';
-import { QmriSessionStore } from './state/qmri-session.store';
+import {
+  ExportReportModel,
+  IvimParameterMapKey,
+  QmriInferenceResult,
+  RoiSummary,
+  SelectedVoxelFit,
+} from './domain/qmri-inference.model';
 import { MapsViewerComponent } from './components/maps-viewer/maps-viewer.component';
+import { QmriSessionStore } from './state/qmri-session.store';
+import { ViewerState } from './qmri.types';
+import { formatCompactList, formatPercent, formatSummaryNumber } from './utils/number-format.util';
 
-const EXPORT_MAP_KEYS: readonly IvimParameterMapKey[] = ['D', 'f', 'Dstar', 'r2', 'validMask'];
+const EXPORT_MAP_KEYS: readonly IvimParameterMapKey[] = ['D', 'f', 'Dstar', 'r2'];
 const WORKFLOW_STEPS = [
   { number: 1, label: 'Dataset' },
   { number: 2, label: 'Validation' },
@@ -22,7 +30,7 @@ type WorkflowStepState = 'completed' | 'active' | 'upcoming';
   imports: [NgOptimizedImage, MapsViewerComponent],
   templateUrl: './qmri-shell.component.html',
   styleUrl: './qmri-shell.component.css',
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class QmriShellComponent {
   private readonly sessionStore = inject(QmriSessionStore);
@@ -30,88 +38,138 @@ export class QmriShellComponent {
 
   protected readonly selectedScan = this.sessionStore.selectedScan;
   protected readonly selectedBvalFileName = this.sessionStore.selectedBvalFileName;
+  protected readonly niftiFileState = this.sessionStore.niftiFileState;
+  protected readonly bvalueFileState = this.sessionStore.bvalueFileState;
   protected readonly ingestMessage = this.sessionStore.ingestMessage;
   protected readonly validation = this.sessionStore.validation;
   protected readonly inferenceStatus = this.sessionStore.inferenceStatus;
   protected readonly inferenceResult = this.sessionStore.inferenceResult;
+  protected readonly previewDataset = this.sessionStore.previewDataset;
   protected readonly taskLog = this.sessionStore.taskLog;
+
   protected readonly selectedVoxelFit = signal<SelectedVoxelFit | null>(null);
   protected readonly selectedRoiSummary = signal<RoiSummary | null>(null);
   protected readonly exportMessage = signal<string | null>(null);
+  protected readonly viewerState = signal<ViewerState | null>(null);
+  protected readonly showGraphDialog = signal(false);
+  protected readonly roiToolMode = signal<'voxel' | 'rectangle' | 'polygon'>('voxel');
+  protected readonly clearSelectionNonce = signal(0);
+  protected readonly finishRoiNonce = signal(0);
+
   protected readonly workflowSteps = WORKFLOW_STEPS;
   protected readonly workflowStepStates = computed<readonly WorkflowStepState[]>(() => {
-    const hasDataset = !!this.selectedScan() && !!this.selectedBvalFileName();
+    const hasDataset = this.niftiFileState().status === 'loaded' && this.bvalueFileState().status === 'loaded';
     const validationReady = hasDataset && this.validation().status === 'valid';
     const analysisReady = validationReady && this.inferenceResult()?.status === 'success';
     const mapsReviewed = analysisReady && (!!this.selectedVoxelFit() || !!this.selectedRoiSummary());
     const exportReady = mapsReviewed && (this.exportMessage() ?? '').toLowerCase().startsWith('exported');
 
     const completionFlags = [hasDataset, validationReady, analysisReady, mapsReviewed, exportReady] as const;
-    const firstIncompleteIndex = completionFlags.findIndex((flag) => !flag);
-    const activeIndex = firstIncompleteIndex === -1 ? -1 : firstIncompleteIndex;
+    const activeIndex = completionFlags.findIndex((flag) => !flag);
 
     return this.workflowSteps.map((_, index) => {
       if (completionFlags[index]) {
         return 'completed';
       }
-
       if (index === activeIndex) {
         return 'active';
       }
-
       return 'upcoming';
     });
   });
-  protected readonly workflowCompletedCount = computed(() => {
-    return this.workflowStepStates().filter((state) => state === 'completed').length;
-  });
-  protected readonly workflowCurrentStep = computed(() => {
-    const activeIndex = this.workflowStepStates().findIndex((state) => state === 'active');
-    if (activeIndex === -1) {
-      return this.workflowSteps.length;
-    }
-    return activeIndex + 1;
-  });
-  protected readonly workflowProgressPercent = computed(() => {
-    return Math.round((this.workflowCompletedCount() / this.workflowSteps.length) * 100);
-  });
-  protected readonly validationDelta = computed(() => {
-    const state = this.validation();
-    if (state.volumeCount === undefined || state.bvalueCount === undefined) {
-      return null;
-    }
-    return Math.abs(state.volumeCount - state.bvalueCount);
-  });
+
+  protected readonly workflowCompletedCount = computed(() => this.workflowStepStates().filter((state) => state === 'completed').length);
+  protected readonly workflowProgressPercent = computed(() => Math.round((this.workflowCompletedCount() / this.workflowSteps.length) * 100));
+
   protected readonly uploadedAtLabel = computed(() => {
-    const iso = this.selectedScan()?.uploadedAtIso;
+    const iso = this.validation().uploadTimeIso ?? this.selectedScan()?.uploadedAtIso;
     if (!iso) {
-      return null;
+      return 'Not available';
     }
 
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) {
-      return null;
+      return 'Not available';
+    }
+
+    return new Intl.DateTimeFormat('nl-NL', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+  });
+
+  protected readonly validationResultLabel = computed(() => {
+    const state = this.validation();
+    if (state.volumeCount === undefined || state.bvalueCount === undefined) {
+      return state.message;
+    }
+
+    if (state.filesMatch) {
+      return 'Volumes and b-value entries match';
+    }
+
+    return `Mismatch: ${state.volumeCount} volumes and ${state.bvalueCount} b-value entries`;
+  });
+
+  protected readonly validationReadiness = computed(() => {
+    const status = this.validation().status;
+    if (status === 'valid') {
+      return 'Dataset is ready for IVIM LSQ fitting.';
+    }
+    if (status === 'pending') {
+      return 'Validation is in progress or incomplete. Verify both files are loaded.';
+    }
+    if (status === 'invalid') {
+      return 'Resolve the mismatch between volumes and b-values before starting the fit.';
+    }
+    return 'Select a diffusion NIfTI dataset and its corresponding b-values file.';
+  });
+  protected readonly voxelSpacingLabel = computed(() => {
+    const spacing = this.validation().voxelSpacing;
+    if (!spacing) {
+      return 'Not available';
+    }
+
+    return `${this.formatNumber(spacing[0], 2)} x ${this.formatNumber(spacing[1], 2)} x ${this.formatNumber(spacing[2], 2)} mm`;
+  });
+
+  protected readonly canExportRoiMask = computed(() => !!this.selectedRoiSummary() && this.canExportMaps());
+  protected readonly canDownloadGraph = computed(() => !!this.selectedVoxelFit());
+  protected readonly analysisRunStartLabel = computed(() => {
+    const runStartIso = this.inferenceResult()?.analysisInfo?.runStartIso;
+    if (!runStartIso) {
+      return 'Not available';
+    }
+
+    const date = new Date(runStartIso);
+    if (Number.isNaN(date.getTime())) {
+      return 'Not available';
     }
 
     return new Intl.DateTimeFormat('nl-NL', {
-      dateStyle: 'short',
-      timeStyle: 'short',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZone: 'Europe/Amsterdam',
     }).format(date);
   });
-  protected readonly validationReadiness = computed(() => {
-    const state = this.validation();
-    if (state.status === 'valid') {
-      return 'Dataset is ready for IVIM LSQ fitting.';
+
+  protected readonly analysisRunDurationLabel = computed(() => {
+    const durationMs = this.inferenceResult()?.analysisInfo?.runDurationMs;
+    if (!Number.isFinite(durationMs) || (durationMs ?? 0) <= 0) {
+      return 'Not available';
     }
-    if (state.status === 'pending') {
-      return 'Validation is in progress or incomplete. Verify both files are loaded.';
+
+    const totalSeconds = Math.max(0, Math.round((durationMs as number) / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+
+    if (minutes > 0) {
+      return `${minutes} min ${seconds} sec`;
     }
-    if (state.status === 'invalid') {
-      return 'Resolve the mismatch between volumes and b-values before starting the fit.';
-    }
-    return 'Load the NIfTI and .bval files first to validate the dataset.';
+
+    return `${seconds} sec`;
   });
-  protected currentSlice = 0;
 
   constructor() {
     this.pageTitle.setTitle('qMRI GUI (Graphic User Interface)');
@@ -120,27 +178,23 @@ export class QmriShellComponent {
   protected async onNiftiInput(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     await this.sessionStore.ingestScanFile(input.files?.[0] ?? null);
-    this.selectedVoxelFit.set(null);
-    this.selectedRoiSummary.set(null);
+    this.resetSelections();
   }
 
   protected async onBvalInput(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     await this.sessionStore.ingestBvalFile(input.files?.[0] ?? null);
-    this.selectedVoxelFit.set(null);
-    this.selectedRoiSummary.set(null);
+    this.resetSelections();
   }
 
   protected async onDatasetInput(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     await this.sessionStore.ingestDatasetFiles(Array.from(input.files ?? []));
-    this.selectedVoxelFit.set(null);
-    this.selectedRoiSummary.set(null);
+    this.resetSelections();
   }
 
   protected async runInference(): Promise<void> {
-    this.selectedVoxelFit.set(null);
-    this.selectedRoiSummary.set(null);
+    this.resetSelections();
     await this.sessionStore.runInference();
   }
 
@@ -152,8 +206,16 @@ export class QmriShellComponent {
     this.selectedRoiSummary.set(summary);
   }
 
-  protected updateCurrentSlice(slice: number): void {
-    this.currentSlice = slice;
+  protected updateViewerState(state: ViewerState): void {
+    this.viewerState.set(state);
+  }
+
+  protected onSliceChanged(slice: number): void {
+    const current = this.viewerState();
+    if (!current) {
+      return;
+    }
+    this.viewerState.set({ ...current, currentSlice: slice });
   }
 
   protected canRun(): boolean {
@@ -167,11 +229,68 @@ export class QmriShellComponent {
 
   protected canExportVoxelCsv(): boolean {
     const result = this.inferenceResult();
-    return !!result && result.status === 'success' && !!result.voxelFit;
+    return !!result && result.status === 'success' && !!this.selectedVoxelFit();
   }
 
   protected canExportReport(): boolean {
     return this.inferenceResult() !== null;
+  }
+
+  protected openGraphDialog(): void {
+    if (!this.selectedVoxelFit()) {
+      return;
+    }
+    this.showGraphDialog.set(true);
+  }
+
+  protected closeGraphDialog(): void {
+    this.showGraphDialog.set(false);
+  }
+
+  protected setRoiToolMode(value: string): void {
+    if (value === 'voxel' || value === 'rectangle' || value === 'polygon') {
+      this.roiToolMode.set(value);
+    }
+  }
+
+  protected clearViewerSelection(): void {
+    this.clearSelectionNonce.update((value) => value + 1);
+    this.selectedVoxelFit.set(null);
+    this.selectedRoiSummary.set(null);
+  }
+
+  protected finishViewerRoi(): void {
+    this.finishRoiNonce.update((value) => value + 1);
+  }
+
+  protected downloadVoxelGraph(): void {
+    const fit = this.selectedVoxelFit();
+    if (!fit) {
+      this.exportMessage.set('Select a voxel before downloading the fit graph.');
+      return;
+    }
+
+    const points = fit.bvalues
+      .map((_, index) => `${this.graphPointX(index, fit).toFixed(1)},${this.graphPointY(fit.fitted[index], fit).toFixed(1)}`)
+      .join(' ');
+
+    const circles = fit.measured
+      .map((value, index) => `<circle cx="${this.graphPointX(index, fit).toFixed(1)}" cy="${this.graphPointY(value, fit).toFixed(1)}" r="3" fill="#b43d2f" />`)
+      .join('');
+
+    const svg = [
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">',
+      '<rect width="100%" height="100%" fill="#fbfcfd"/>',
+      '<line x1="42" y1="128" x2="288" y2="128" stroke="#9aa5ad"/>',
+      '<line x1="42" y1="28" x2="42" y2="128" stroke="#9aa5ad"/>',
+      `<polyline points="${points}" fill="none" stroke="#1f6f8b" stroke-width="2"/>`,
+      circles,
+      '</svg>',
+    ].join('');
+
+    const baseName = this.exportBaseName();
+    this.downloadText(svg, `${baseName}_voxel_fit_graph.svg`, 'image/svg+xml;charset=utf-8');
+    this.exportMessage.set('Exported voxel-fit graph as SVG.');
   }
 
   protected exportParameterMaps(): void {
@@ -188,94 +307,78 @@ export class QmriShellComponent {
       for (const key of EXPORT_MAP_KEYS) {
         const map = result.parameterMaps[key];
         const values = this.decodeFloat32Base64(map.data);
-        const expectedLength = x * y * z;
-        if (values.length !== expectedLength) {
-          throw new Error(`Map ${map.displayName} has ${values.length} voxels, expected ${expectedLength}.`);
+        if (values.length !== x * y * z) {
+          throw new Error(`Map ${map.displayName} has ${values.length} voxels, expected ${x * y * z}.`);
         }
 
         const niftiBlob = this.buildNiftiBlob(values, [x, y, z]);
-        const fileSuffix = key === 'validMask' ? 'valid_mask' : key;
-        this.downloadBlob(niftiBlob, `${baseName}_${fileSuffix}.nii`);
+        this.downloadBlob(niftiBlob, `${baseName}_${key}.nii`);
       }
 
-      this.exportMessage.set(`Exported ${EXPORT_MAP_KEYS.length} parameter map NIfTI files.`);
+      this.exportMessage.set('Exported parameter maps (.nii).');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not export parameter maps.';
-      this.exportMessage.set(message);
+      this.exportMessage.set(error instanceof Error ? error.message : 'Could not export parameter maps.');
     }
   }
 
-  protected exportVoxelFitCsv(): void {
+  protected exportValidMask(): void {
     const result = this.inferenceResult();
-    if (!result || result.status !== 'success' || !result.voxelFit) {
-      this.exportMessage.set('Voxel fit data is not available for CSV export.');
+    if (!result || result.status !== 'success') {
+      this.exportMessage.set('No successful inference result available for valid mask export.');
       return;
     }
 
-    const baseName = this.exportBaseName();
-    const csvParts: string[] = [];
-    csvParts.push('x,y,z,D,f,Dstar,adjustedR2,validMask');
-
-    try {
-      const shape = result.metadata.imageShape;
-      const totalVoxels = shape[0] * shape[1] * shape[2];
-      const d = this.decodeFloat32Base64(result.parameterMaps.D.data);
-      const f = this.decodeFloat32Base64(result.parameterMaps.f.data);
-      const dstar = this.decodeFloat32Base64(result.parameterMaps.Dstar.data);
-      const r2 = this.decodeFloat32Base64(result.parameterMaps.r2.data);
-      const validMask = this.decodeFloat32Base64(result.parameterMaps.validMask.data);
-
-      if ([d, f, dstar, r2, validMask].some((array) => array.length !== totalVoxels)) {
-        throw new Error('Voxel arrays are inconsistent and could not be exported.');
-      }
-
-      for (let x = 0; x < shape[0]; x++) {
-        for (let y = 0; y < shape[1]; y++) {
-          for (let z = 0; z < shape[2]; z++) {
-            const index = this.getMapIndex(x, y, z, shape);
-            if (!Number.isFinite(validMask[index]) || validMask[index] <= 0) {
-              continue;
-            }
-            csvParts.push([
-              x,
-              y,
-              z,
-              this.formatCsvNumber(d[index]),
-              this.formatCsvNumber(f[index]),
-              this.formatCsvNumber(dstar[index]),
-              this.formatCsvNumber(r2[index]),
-              this.formatCsvNumber(validMask[index]),
-            ].join(','));
-          }
-        }
-      }
-
-      this.downloadText(csvParts.join('\n'), `${baseName}_voxel_fit_summary.csv`, 'text/csv;charset=utf-8');
-
-      const selected = this.selectedVoxelFit();
-      if (selected) {
-        const selectedRows = ['bValue,measuredSignal,fittedSignal'];
-        for (let i = 0; i < selected.bvalues.length; i++) {
-          selectedRows.push([
-            this.formatCsvNumber(selected.bvalues[i]),
-            this.formatCsvNumber(selected.measured[i]),
-            this.formatCsvNumber(selected.fitted[i]),
-          ].join(','));
-        }
-        this.downloadText(
-          selectedRows.join('\n'),
-          `${baseName}_selected_voxel_${selected.x}_${selected.y}_${selected.z}.csv`,
-          'text/csv;charset=utf-8'
-        );
-      }
-
-      this.exportMessage.set(selected
-        ? 'Exported voxel fit summary CSV and selected voxel signal-fit CSV.'
-        : 'Exported voxel fit summary CSV. Select a voxel to also export its fitted curve CSV.');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not export voxel fit CSV.';
-      this.exportMessage.set(message);
+    const [x, y, z] = result.metadata.imageShape;
+    const values = this.decodeFloat32Base64(result.parameterMaps.validMask.data);
+    if (values.length !== x * y * z) {
+      this.exportMessage.set('Valid mask export failed due to inconsistent map dimensions.');
+      return;
     }
+
+    const niftiBlob = this.buildNiftiBlob(values, [x, y, z]);
+    this.downloadBlob(niftiBlob, `${this.exportBaseName()}_valid_mask.nii`);
+    this.exportMessage.set('Exported valid mask (.nii).');
+  }
+
+  protected exportRoiMask(): void {
+    const result = this.inferenceResult();
+    const roi = this.selectedRoiSummary();
+    if (!result || result.status !== 'success' || !roi) {
+      this.exportMessage.set('ROI export requires a current ROI selection and successful analysis result.');
+      return;
+    }
+
+    const [x, y, z] = result.metadata.imageShape;
+    const values = new Float32Array(x * y * z);
+    for (let yy = roi.bounds.yStart; yy <= roi.bounds.yEnd; yy++) {
+      for (let xx = roi.bounds.xStart; xx <= roi.bounds.xEnd; xx++) {
+        const index = this.getMapIndex(xx, yy, roi.bounds.z, [x, y, z]);
+        values[index] = 1;
+      }
+    }
+
+    this.downloadBlob(this.buildNiftiBlob(values, [x, y, z]), `${this.exportBaseName()}_roi_mask.nii`);
+    this.exportMessage.set('Exported ROI mask (.nii) from current ROI bounds.');
+  }
+
+  protected exportSelectedVoxelCsv(): void {
+    const fit = this.selectedVoxelFit();
+    if (!fit) {
+      this.exportMessage.set('Select a voxel before exporting selected voxel CSV.');
+      return;
+    }
+
+    const rows = ['bValue,measuredSignal,fittedSignal'];
+    for (let i = 0; i < fit.bvalues.length; i++) {
+      rows.push([
+        this.formatCsvNumber(fit.bvalues[i]),
+        this.formatCsvNumber(fit.measured[i]),
+        this.formatCsvNumber(fit.fitted[i]),
+      ].join(','));
+    }
+
+    this.downloadText(rows.join('\n'), `${this.exportBaseName()}_selected_voxel_${fit.x}_${fit.y}_${fit.z}.csv`, 'text/csv;charset=utf-8');
+    this.exportMessage.set('Exported selected voxel CSV.');
   }
 
   protected exportReport(): void {
@@ -285,31 +388,52 @@ export class QmriShellComponent {
       return;
     }
 
-    const selectedVoxel = this.selectedVoxelFit();
-    const selectedRoi = this.selectedRoiSummary();
-    const report = {
+    const state = this.viewerState();
+    const report: ExportReportModel = {
       exportedAtIso: new Date().toISOString(),
-      scan: this.selectedScan(),
-      validation: this.validation(),
-      inferenceStatus: this.inferenceStatus(),
-      resultSummary: this.toResultSummary(result),
-      selectedVoxel: selectedVoxel ? {
-        x: selectedVoxel.x,
-        y: selectedVoxel.y,
-        z: selectedVoxel.z,
-        D: selectedVoxel.D,
-        f: selectedVoxel.f,
-        Dstar: selectedVoxel.Dstar,
-        adjustedR2: selectedVoxel.r2,
-        residualRmse: selectedVoxel.residualRmse,
-      } : null,
-      selectedRoi,
-      taskLog: this.taskLog(),
+      inputFiles: {
+        niftiFileName: this.selectedScan()?.fileName ?? null,
+        bvalueFileName: this.selectedBvalFileName(),
+      },
+      image: {
+        dimensions: this.validation().imageDimensions ?? null,
+        voxelSpacing: this.validation().voxelSpacing ?? null,
+      },
+      bvalues: {
+        totalCount: this.validation().bvalueCount ?? null,
+        uniqueCount: this.validation().uniqueBvalueCount ?? null,
+        uniqueValues: this.validation().uniqueBvalues ?? [],
+      },
+      display: {
+        selectedBackgroundImage: state ? `${state.selectedBackgroundMode}:${state.selectedBackgroundVolumeIndex}` : null,
+        selectedParameterMap: state?.selectedMap ?? null,
+      },
+      analysis: {
+        status: this.inferenceStatus(),
+        startedAtIso: result.analysisInfo?.runStartIso ?? null,
+        durationMs: result.analysisInfo?.runDurationMs ?? null,
+        softwareVersion: result.analysisInfo?.softwareVersion ?? null,
+      },
+      mask: result.status === 'success'
+        ? {
+            validVoxelCount: result.qc.validVoxelCount ?? 0,
+            invalidVoxelCount: result.qc.failedVoxelCount,
+            totalEvaluatedVoxelCount: result.qc.evaluatedVoxelCount ?? 0,
+            validPercentage: result.qc.validVoxelPercentage,
+            invalidPercentage: 100 - result.qc.validVoxelPercentage,
+          }
+        : null,
+      selectedVoxel: this.selectedVoxelFit(),
+      selectedRoi: this.selectedRoiSummary(),
+      appVersion: '0.2.0',
     };
 
-    const baseName = this.exportBaseName();
-    this.downloadText(JSON.stringify(report, null, 2), `${baseName}_report.json`, 'application/json;charset=utf-8');
-    this.exportMessage.set('Exported JSON report with metadata, QC metrics, and current selections.');
+    this.downloadText(
+      JSON.stringify(report, null, 2),
+      `${this.exportBaseName()}_analysis_report.json`,
+      'application/json;charset=utf-8',
+    );
+    this.exportMessage.set('Exported analysis report JSON.');
   }
 
   protected graphPointX(index: number, fit: SelectedVoxelFit): number {
@@ -342,6 +466,25 @@ export class QmriShellComponent {
     return Math.max(...fit.bvalues);
   }
 
+  protected formatNumber(value: number | null | undefined, decimals = 3): string {
+    return formatSummaryNumber(value, { decimals });
+  }
+
+  protected formatPercent(value: number | null | undefined, decimals = 1): string {
+    return formatPercent(value, decimals);
+  }
+
+  protected formatBvalueList(values: readonly number[] | undefined): string {
+    return formatCompactList(values ?? []);
+  }
+
+  private resetSelections(): void {
+    this.selectedVoxelFit.set(null);
+    this.selectedRoiSummary.set(null);
+    this.viewerState.set(null);
+    this.showGraphDialog.set(false);
+  }
+
   private sortedFitIndices(fit: SelectedVoxelFit): readonly number[] {
     return fit.bvalues.map((_, index) => index).sort((left, right) => fit.bvalues[left] - fit.bvalues[right]);
   }
@@ -351,37 +494,9 @@ export class QmriShellComponent {
     return fileName.replace(/\.nii(\.gz)?$/i, '').replace(/[^a-z0-9._-]+/gi, '_');
   }
 
-  private toResultSummary(result: QmriInferenceResult): Record<string, unknown> {
-    return {
-      status: result.status,
-      message: result.message,
-      metadata: result.metadata,
-      qc: result.qc,
-      parameterMaps: {
-        D: this.mapStats(result, 'D'),
-        f: this.mapStats(result, 'f'),
-        Dstar: this.mapStats(result, 'Dstar'),
-        r2: this.mapStats(result, 'r2'),
-        validMask: this.mapStats(result, 'validMask'),
-      },
-    };
-  }
-
-  private mapStats(result: QmriInferenceResult, key: IvimParameterMapKey): Record<string, unknown> {
-    const map = result.parameterMaps[key];
-    return {
-      displayName: map.displayName,
-      unit: map.unit,
-      minValue: map.minValue,
-      maxValue: map.maxValue,
-      meanValue: map.meanValue,
-    };
-  }
-
   private buildNiftiBlob(values: Float32Array, shape: [number, number, number]): Blob {
     const headerBytes = 352;
-    const voxelCount = shape[0] * shape[1] * shape[2];
-    const dataBytes = voxelCount * 4;
+    const dataBytes = shape[0] * shape[1] * shape[2] * 4;
     const buffer = new ArrayBuffer(headerBytes + dataBytes);
     const view = new DataView(buffer);
     const bytes = new Uint8Array(buffer);
@@ -397,14 +512,11 @@ export class QmriShellComponent {
     view.setFloat32(76 + 8, 1, true);
     view.setFloat32(76 + 12, 1, true);
     view.setFloat32(108, 352, true);
-    view.setInt16(252, 0, true);
-    view.setInt16(254, 0, true);
 
     bytes[123] = 2;
     bytes[344] = 110;
     bytes[345] = 43;
     bytes[346] = 49;
-    bytes[347] = 0;
 
     const dataView = new DataView(buffer, headerBytes, dataBytes);
     for (let i = 0; i < values.length; i++) {
@@ -432,8 +544,7 @@ export class QmriShellComponent {
   }
 
   private downloadText(content: string, fileName: string, mimeType: string): void {
-    const blob = new Blob([content], { type: mimeType });
-    this.downloadBlob(blob, fileName);
+    this.downloadBlob(new Blob([content], { type: mimeType }), fileName);
   }
 
   private downloadBlob(blob: Blob, fileName: string): void {

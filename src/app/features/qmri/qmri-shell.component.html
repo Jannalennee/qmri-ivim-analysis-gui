@@ -28,13 +28,7 @@
     <section class="steps-indicator" aria-label="Workflow steps">
       @for (step of workflowSteps; track step.number) {
         @let state = workflowStepStates()[step.number - 1];
-        <div
-          class="step"
-          [class.completed]="state === 'completed'"
-          [class.active]="state === 'active'"
-          [class.disabled]="state === 'upcoming'"
-          [attr.aria-current]="state === 'active' ? 'step' : null"
-        >
+        <div class="step" [class.completed]="state === 'completed'" [class.active]="state === 'active'" [class.disabled]="state === 'upcoming'" [attr.aria-current]="state === 'active' ? 'step' : null">
           <span class="step-badge" aria-hidden="true">{{ step.number }}</span>
           <span class="step-label">{{ step.number }}. {{ step.label }}</span>
         </div>
@@ -45,75 +39,66 @@
   <section class="shell-grid" aria-label="qMRI analysis workspace">
     <aside class="column task-column" aria-label="Dataset loading and analysis start">
       <article class="card">
-        <h2>Dataset</h2>
+        <h2>Dataset upload</h2>
+        <p class="small helper">Select a diffusion NIfTI dataset and its corresponding b-values file.</p>
 
-        <label for="nifti-upload">Diffusion NIfTI</label>
+        <label for="nifti-upload" class="button-like">Diffusion NIfTI</label>
         <input id="nifti-upload" type="file" accept=".nii,.nii.gz" (change)="onNiftiInput($event)" />
+        <p class="file-name">{{ niftiFileState().fileName ?? 'No file selected' }}</p>
+        <p class="status" [attr.data-status]="niftiFileState().status">Status: {{ niftiFileState().message }}</p>
 
-        <label for="bval-upload">b-values</label>
-        <input id="bval-upload" type="file" accept=".bval" (change)="onBvalInput($event)" />
+        <label for="bval-upload" class="button-like">b-values</label>
+        <input id="bval-upload" type="file" accept=".bval,.bvals,.txt,text/plain" (change)="onBvalInput($event)" />
+        <p class="file-name">{{ bvalueFileState().fileName ?? 'No file selected' }}</p>
+        <p class="status" [attr.data-status]="bvalueFileState().status">Status: {{ bvalueFileState().message }}</p>
 
-        <label for="dataset-upload" class="button-like">Load both files together</label>
-        <input
-          id="dataset-upload"
-          type="file"
-          accept=".nii,.nii.gz,.bval"
-          multiple
-          (change)="onDatasetInput($event)"
-        />
-
-        <div class="file-summary">
-          <p><span>NIfTI</span>{{ selectedScan()?.fileName ?? 'not loaded' }}</p>
-          <p><span>.bval</span>{{ selectedBvalFileName() ?? 'not loaded' }}</p>
-        </div>
+        <label for="dataset-upload" class="button-like">Select both files</label>
+        <input id="dataset-upload" type="file" accept=".nii,.nii.gz,.bval,.bvals,.txt,text/plain" multiple (change)="onDatasetInput($event)" />
 
         <p class="small">{{ ingestMessage() }}</p>
       </article>
 
       <article class="card validation-card" [class.valid]="validation().status === 'valid'" [class.invalid]="validation().status === 'invalid'">
         <h2>Validation</h2>
-        <p class="status-line">{{ validation().message }}</p>
+        <p class="status-line">{{ validationResultLabel() }}</p>
+
         @if (validation().volumeCount && validation().bvalueCount) {
           <dl class="counts">
-            <div>
-              <dt>Volumes</dt>
-              <dd>{{ validation().volumeCount }}</dd>
-            </div>
-            <div>
-              <dt>b-values</dt>
-              <dd>{{ validation().bvalueCount }}</dd>
-            </div>
-            <div>
-              <dt>File size</dt>
-              <dd>{{ (selectedScan()?.sizeMb ?? 0).toFixed(2) }} MB</dd>
-            </div>
-            <div>
-              <dt>Format</dt>
-              <dd>{{ selectedScan()?.format ?? '—' }}</dd>
-            </div>
-            <div>
-              <dt>Difference</dt>
-              <dd>{{ validationDelta() ?? 0 }}</dd>
-            </div>
-            <div>
-              <dt>Uploaded</dt>
-              <dd>{{ uploadedAtLabel() ?? '—' }}</dd>
-            </div>
+            <div><dt>Diffusion volumes</dt><dd>{{ validation().volumeCount }}</dd></div>
+            <div><dt>Total b-value entries</dt><dd>{{ validation().bvalueCount }}</dd></div>
+            <div><dt>Unique b-values</dt><dd>{{ validation().uniqueBvalueCount ?? 'Not available' }}</dd></div>
+            <div><dt>b-value list</dt><dd>{{ formatBvalueList(validation().uniqueBvalues) }}</dd></div>
+            <div><dt>Image dimensions</dt><dd>{{ validation().imageDimensions?.[0] }} x {{ validation().imageDimensions?.[1] }} x {{ validation().imageDimensions?.[2] }}</dd></div>
+            <div><dt>Number of slices</dt><dd>{{ validation().numberOfSlices ?? 'Not available' }}</dd></div>
+            <div><dt>Voxel spacing</dt><dd>{{ voxelSpacingLabel() }}</dd></div>
+            <div><dt>File format</dt><dd>{{ validation().fileFormat ?? 'Not available' }}</dd></div>
+            <div><dt>File size</dt><dd>{{ formatNumber((validation().fileSizeBytes ?? 0) / (1024 * 1024), 2) }} MB</dd></div>
+            <div><dt>Upload time</dt><dd>{{ uploadedAtLabel() }}</dd></div>
           </dl>
+
+          @if (validation().uniqueBvalueSummary) {
+            <details class="bvalue-details">
+              <summary>Repeated b-values details</summary>
+              <ul>
+                @for (value of validation().uniqueBvalueSummary?.values ?? []; track value) {
+                  <li>b={{ value }}: {{ validation().uniqueBvalueSummary?.countsByValue?.[value + ''] ?? 0 }} volumes</li>
+                }
+              </ul>
+            </details>
+          }
         }
+
         <p class="small validation-readiness">{{ validationReadiness() }}</p>
       </article>
 
       <article class="card">
         <h2>Analysis</h2>
-        <button type="button" [disabled]="!canRun()" (click)="runInference()">
-          Run IVIM LSQ fitting
-        </button>
+        <button type="button" [disabled]="!canRun()" (click)="runInference()">Run IVIM LSQ fitting</button>
         <p class="small">Status: <strong>{{ inferenceStatus() }}</strong></p>
       </article>
 
       <article class="card log-card">
-        <h2>Run Log</h2>
+        <h2>Run log</h2>
         @if (taskLog().length) {
           <ol>
             @for (entry of taskLog(); track entry.id) {
@@ -132,109 +117,210 @@
       </article>
     </aside>
 
-    <section class="viewer card" aria-label="Parameter map viewer">
+    <section class="viewer card" aria-label="Parameter map and preview viewer">
       <div class="viewer-heading">
-        <h2>Parameter Maps</h2>
+        <h2>@if (inferenceResult()?.status === 'success') {Parameter map viewer} @else {Preview input data}</h2>
         @if (inferenceResult(); as result) {
           <span>{{ result.status }} | {{ result.metadata.numberOfSlices }} slices</span>
         }
       </div>
       <app-maps-viewer
         [inferenceResult]="inferenceResult()"
-        [currentSlice]="currentSlice"
-        (sliceChanged)="updateCurrentSlice($event)"
+        [previewDataset]="previewDataset()"
+        [roiTool]="roiToolMode()"
+        [clearSelectionNonce]="clearSelectionNonce()"
+        [finishRoiNonce]="finishRoiNonce()"
+        (sliceChanged)="onSliceChanged($event)"
         (voxelSelected)="updateVoxelSelection($event)"
-        (roiSelected)="updateRoiSelection($event)">
+        (roiSelected)="updateRoiSelection($event)"
+        (viewerStateChanged)="updateViewerState($event)">
       </app-maps-viewer>
     </section>
 
-    <aside class="column detail-column" aria-label="Selected voxel details and export tools">
+    <aside class="column detail-column" aria-label="Selected voxel details and exports">
       <article class="card">
-        <h2>ROI Summary</h2>
-        @if (selectedRoiSummary(); as roi) {
-          <p class="small">
-            Slice {{ roi.bounds.z }} | x {{ roi.bounds.xStart }}-{{ roi.bounds.xEnd }},
-            y {{ roi.bounds.yStart }}-{{ roi.bounds.yEnd }}
-          </p>
-          <dl class="result-metrics">
-            <div><dt>Valid voxels</dt><dd>{{ roi.validVoxelCount }}</dd></div>
-            <div><dt>Mean D</dt><dd>{{ roi.D.mean.toFixed(6) }}</dd></div>
-            <div><dt>Median D</dt><dd>{{ roi.D.median.toFixed(6) }}</dd></div>
-            <div><dt>Std D</dt><dd>{{ roi.D.standardDeviation.toFixed(6) }}</dd></div>
-            <div><dt>Mean f</dt><dd>{{ roi.f.mean.toFixed(4) }}</dd></div>
-            <div><dt>Median f</dt><dd>{{ roi.f.median.toFixed(4) }}</dd></div>
-            <div><dt>Std f</dt><dd>{{ roi.f.standardDeviation.toFixed(4) }}</dd></div>
-            <div><dt>Mean D*</dt><dd>{{ roi.Dstar.mean.toFixed(4) }}</dd></div>
-            <div><dt>Median D*</dt><dd>{{ roi.Dstar.median.toFixed(4) }}</dd></div>
-            <div><dt>Std D*</dt><dd>{{ roi.Dstar.standardDeviation.toFixed(4) }}</dd></div>
-            <div><dt>Mean adj. R2</dt><dd>{{ roi.meanAdjustedR2.toFixed(3) }}</dd></div>
-          </dl>
-        } @else {
-          <p class="small">Drag a rectangle on the current parameter map slice.</p>
-        }
-      </article>
+        <h2>Selected voxel</h2>
+        <div class="voxel-tooling">
+          <label>Selection tool</label>
+          <div class="roi-mode-buttons" role="group" aria-label="Voxel tool option">
+            <button
+              type="button"
+              class="roi-mode-button"
+              [class.selected]="roiToolMode() === 'voxel'"
+              title="Voxel select"
+              aria-label="Voxel select"
+              (click)="setRoiToolMode('voxel')"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="6"></circle>
+                <circle cx="12" cy="12" r="2" class="fill"></circle>
+              </svg>
+            </button>
+          </div>
+        </div>
 
-      <article class="card">
-        <h2>Selected Voxel</h2>
         @if (selectedVoxelFit(); as fit) {
           <dl class="voxel-metrics">
-            <div><dt>Coordinate</dt><dd>{{ fit.x }}, {{ fit.y }}, {{ fit.z }}</dd></div>
-            <div><dt>D</dt><dd>{{ fit.D.toFixed(6) }} mm2/s</dd></div>
-            <div><dt>f</dt><dd>{{ fit.f.toFixed(4) }}</dd></div>
-            <div><dt>D*</dt><dd>{{ fit.Dstar.toFixed(4) }} mm2/s</dd></div>
-            <div><dt>Adj. R2</dt><dd>{{ fit.r2.toFixed(3) }}</dd></div>
-            <div><dt>RMSE</dt><dd>{{ fit.residualRmse.toFixed(4) }}</dd></div>
+            <div><dt>Coordinates</dt><dd>{{ fit.x }}, {{ fit.y }}, {{ fit.z }}</dd></div>
+            <div><dt>D</dt><dd>{{ formatNumber(fit.D, 3) }} mm2/s</dd></div>
+            <div><dt>f</dt><dd>{{ formatNumber(fit.f, 3) }}</dd></div>
+            <div><dt>D*</dt><dd>{{ formatNumber(fit.Dstar, 3) }} mm2/s</dd></div>
+            <div><dt>Adjusted R2</dt><dd>{{ formatNumber(fit.r2, 3) }}</dd></div>
+            <div><dt>RMSE</dt><dd>{{ formatNumber(fit.residualRmse, 3) }}</dd></div>
           </dl>
 
-          <svg class="fit-graph" viewBox="0 0 320 180" role="img" aria-label="IVIM voxel fit graph">
-            <line x1="42" y1="128" x2="288" y2="128" />
-            <line x1="42" y1="28" x2="42" y2="128" />
-            <text x="165" y="166" text-anchor="middle">b-values</text>
-            <text x="14" y="82" text-anchor="middle" transform="rotate(-90 14 82)">signal</text>
-            <text x="42" y="146" text-anchor="middle">{{ minBvalue(fit) }}</text>
-            <text x="288" y="146" text-anchor="middle">{{ maxBvalue(fit) }}</text>
-            <text x="34" y="32" text-anchor="end">{{ graphMaxSignal(fit).toFixed(1) }}</text>
-            <text x="34" y="132" text-anchor="end">0</text>
-            <polyline [attr.points]="fittedPolyline(fit)" />
-            @for (value of fit.measured; track $index) {
-              <circle [attr.cx]="graphPointX($index, fit)" [attr.cy]="graphPointY(value, fit)" r="3" />
-            }
-          </svg>
-          <div class="legend">
-            <span class="line-swatch"></span> LSQ fit
-            <span class="dot-swatch"></span> measured signal
+          <div class="graph-wrap">
+            <button
+              type="button"
+              class="graph-launch-corner"
+              aria-label="Expand graph"
+              title="Expand graph"
+              (click)="openGraphDialog()"
+            >
+              +
+            </button>
+            <svg class="fit-graph" viewBox="0 0 320 180" role="img" aria-label="IVIM voxel fit graph" (click)="openGraphDialog()">
+              <line x1="42" y1="128" x2="288" y2="128" />
+              <line x1="42" y1="28" x2="42" y2="128" />
+              <text x="165" y="166" text-anchor="middle">b-value</text>
+              <text x="14" y="82" text-anchor="middle" transform="rotate(-90 14 82)">Normalised signal</text>
+              <text x="42" y="146" text-anchor="middle">{{ minBvalue(fit) }}</text>
+              <text x="288" y="146" text-anchor="middle">{{ maxBvalue(fit) }}</text>
+              <text x="34" y="32" text-anchor="end">{{ graphMaxSignal(fit).toFixed(1) }}</text>
+              <text x="34" y="132" text-anchor="end">0</text>
+              <polyline [attr.points]="fittedPolyline(fit)" />
+              @for (value of fit.measured; track $index) {
+                <circle [attr.cx]="graphPointX($index, fit)" [attr.cy]="graphPointY(value, fit)" r="3" />
+              }
+            </svg>
           </div>
         } @else {
-          <p class="small">Run fitting, then click a voxel in the parameter map.</p>
+          <p class="small">Select a voxel on the parameter map to inspect its fit.</p>
         }
       </article>
 
       <article class="card">
-        <h2>Fit Quality</h2>
+        <h2>ROI summary</h2>
+        <div class="roi-tooling">
+          <label>ROI options</label>
+          <div class="roi-mode-buttons" role="group" aria-label="ROI tool options">
+            <button
+              type="button"
+              class="roi-mode-button"
+              [class.selected]="roiToolMode() === 'rectangle'"
+              title="Rectangle ROI"
+              aria-label="Rectangle ROI"
+              (click)="setRoiToolMode('rectangle')"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="5" y="6" width="14" height="12" rx="1"></rect>
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="roi-mode-button"
+              [class.selected]="roiToolMode() === 'polygon'"
+              title="Freeform ROI"
+              aria-label="Freeform ROI"
+              (click)="setRoiToolMode('polygon')"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 17 L9 8 L15 14 L19 6"></path>
+                <circle cx="5" cy="17" r="1.4" class="fill"></circle>
+                <circle cx="9" cy="8" r="1.4" class="fill"></circle>
+                <circle cx="15" cy="14" r="1.4" class="fill"></circle>
+                <circle cx="19" cy="6" r="1.4" class="fill"></circle>
+              </svg>
+            </button>
+          </div>
+          <div class="roi-action-row">
+            @if (roiToolMode() === 'polygon') {
+              <button type="button" (click)="finishViewerRoi()">Finish ROI</button>
+            }
+            <button type="button" (click)="clearViewerSelection()">Clear selection</button>
+          </div>
+        </div>
+
+        @if (selectedRoiSummary(); as roi) {
+          <p class="small">Slice {{ roi.sliceNumber ?? roi.bounds.z }} | Parameter {{ roi.parameterKey ?? 'Not available' }} ({{ roi.parameterUnit ?? 'n/a' }})</p>
+          <dl class="result-metrics">
+            <div><dt>Selected voxels</dt><dd>{{ roi.selectedVoxelCount ?? roi.validVoxelCount }}</dd></div>
+            <div><dt>Mean</dt><dd>{{ formatNumber(roi.D.mean, 3) }}</dd></div>
+            <div><dt>Median</dt><dd>{{ formatNumber(roi.D.median, 3) }}</dd></div>
+            <div><dt>Standard deviation</dt><dd>{{ formatNumber(roi.standardDeviation, 3) }}</dd></div>
+            <div><dt>Minimum</dt><dd>{{ formatNumber(roi.minValue, 3) }}</dd></div>
+            <div><dt>Maximum</dt><dd>{{ formatNumber(roi.maxValue, 3) }}</dd></div>
+          </dl>
+        } @else {
+          <p class="small">Use the ROI controls above to draw and inspect a region.</p>
+        }
+      </article>
+
+      <article class="card">
+        <h2>Analysis details</h2>
         @if (inferenceResult(); as result) {
           <dl class="result-metrics">
-            <div><dt>Mean adjusted R2</dt><dd>{{ result.qc.meanAdjustedR2.toFixed(3) }}</dd></div>
-            <div><dt>Valid voxels</dt><dd>{{ result.qc.validVoxelPercentage.toFixed(1) }}%</dd></div>
-            <div><dt>Failed voxels</dt><dd>{{ result.qc.failedVoxelCount }}</dd></div>
-            <div><dt>b-values</dt><dd>{{ result.metadata.numberOfBValues }}</dd></div>
+            <div><dt>Model</dt><dd>{{ result.analysisInfo?.modelName ?? 'IVIM least-squares fitting' }}</dd></div>
+            <div><dt>Run start time</dt><dd>{{ analysisRunStartLabel() }}</dd></div>
+            <div><dt>Run duration</dt><dd>{{ analysisRunDurationLabel() }}</dd></div>
+            <div><dt>Dataset filename</dt><dd>{{ selectedScan()?.fileName ?? 'Not available' }}</dd></div>
+            <div><dt>Number of volumes</dt><dd>{{ validation().volumeCount ?? result.metadata.numberOfBValues }}</dd></div>
+            <div><dt>Number of b-values</dt><dd>{{ validation().bvalueCount ?? result.metadata.numberOfBValues }}</dd></div>
+            <div><dt>Software/version</dt><dd>{{ result.analysisInfo?.softwareVersion ?? 'Not available' }}</dd></div>
           </dl>
           <p class="small">{{ result.message }}</p>
         } @else {
-          <p class="small">Summary metrics appear after fitting.</p>
+          <p class="small">Analysis details appear after fitting.</p>
         }
       </article>
 
       <article class="card">
         <h2>Export</h2>
-        <button type="button" [disabled]="!canExportMaps()" (click)="exportParameterMaps()">Export parameter maps (.nii)</button>
-        <button type="button" [disabled]="!canExportVoxelCsv()" (click)="exportVoxelFitCsv()">Export voxel fit CSV</button>
-        <button type="button" [disabled]="!canExportReport()" (click)="exportReport()">Export report (.json)</button>
+
+        <h3>A. Image-derived files</h3>
+        <button type="button" [disabled]="!canExportMaps()" title="Requires a successful analysis run." (click)="exportParameterMaps()">Export parameter maps</button>
+        <button type="button" [disabled]="!canExportMaps()" title="Requires valid-mask data from the analysis result." (click)="exportValidMask()">Export valid mask</button>
+        <button type="button" [disabled]="!canExportRoiMask()" title="Requires a current ROI selection." (click)="exportRoiMask()">Export ROI mask</button>
+
+        <h3>B. Selected result</h3>
+        <button type="button" [disabled]="!canExportVoxelCsv()" title="Select a voxel to enable CSV export." (click)="exportSelectedVoxelCsv()">Export selected voxel CSV</button>
+        <button type="button" [disabled]="!canDownloadGraph()" title="Select a voxel to enable graph download." (click)="downloadVoxelGraph()">Download voxel-fit graph</button>
+
+        <h3>C. Reproducibility/report</h3>
+        <button type="button" [disabled]="!canExportReport()" title="Requires upload and analysis state." (click)="exportReport()">Export analysis report JSON</button>
+
         @if (exportMessage(); as message) {
           <p class="small export-note">{{ message }}</p>
         } @else {
-          <p class="small">Exports are available after a successful run.</p>
+          <p class="small">Exports are enabled when required data is available.</p>
         }
       </article>
     </aside>
   </section>
+
+  @if (showGraphDialog() && selectedVoxelFit(); as fit) {
+    <section class="graph-modal-backdrop" (click)="closeGraphDialog()">
+      <article class="graph-modal" (click)="$event.stopPropagation()" role="dialog" aria-label="Voxel fit graph dialog">
+        <div class="graph-modal-header">
+          <h2>Voxel fit graph</h2>
+          <button type="button" (click)="closeGraphDialog()">Close</button>
+        </div>
+        <p class="small">Voxel coordinates: {{ fit.x }}, {{ fit.y }}, {{ fit.z }}</p>
+        <svg class="fit-graph large" viewBox="0 0 320 180" role="img" aria-label="Enlarged IVIM voxel fit graph">
+          <line x1="42" y1="128" x2="288" y2="128" />
+          <line x1="42" y1="28" x2="42" y2="128" />
+          <text x="165" y="166" text-anchor="middle">b-value</text>
+          <text x="14" y="82" text-anchor="middle" transform="rotate(-90 14 82)">Normalised signal</text>
+          <text x="42" y="146" text-anchor="middle">{{ minBvalue(fit) }}</text>
+          <text x="288" y="146" text-anchor="middle">{{ maxBvalue(fit) }}</text>
+          <text x="34" y="32" text-anchor="end">{{ graphMaxSignal(fit).toFixed(1) }}</text>
+          <text x="34" y="132" text-anchor="end">0</text>
+          <polyline [attr.points]="fittedPolyline(fit)" />
+          @for (value of fit.measured; track $index) {
+            <circle [attr.cx]="graphPointX($index, fit)" [attr.cy]="graphPointY(value, fit)" r="3" />
+          }
+        </svg>
+      </article>
+    </section>
+  }
 </main>
