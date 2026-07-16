@@ -111,7 +111,7 @@ These steps assume you start from a fresh clone of the repository.
 ### 1. Open the project
 
 ```bash
-cd amc_ui
+cd qmri-ivim-analysis-gui
 ```
 
 ### 2. Install the frontend dependencies
